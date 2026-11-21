@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Realtime.h"
+
 #include <array>
 #include <atomic>
 #include <bit>
@@ -34,7 +36,7 @@ class ParameterMirror {
   public:
     explicit ParameterMirror(std::vector<ParameterSpec> specs);
 
-    void hostSetNormalized(std::uint32_t index, float normalized) noexcept;
+    void hostSetNormalized(std::uint32_t index, float normalized) noexcept PRISM_NONBLOCKING;
     [[nodiscard]] float normalized(std::uint32_t index) const noexcept {
         return values_[index].load(std::memory_order_acquire);
     }
@@ -78,8 +80,9 @@ class ParameterMirror {
     std::unique_ptr<std::atomic<bool>[]> gestures_;
     std::vector<std::atomic<std::uint64_t>> dirty_;
 
-    void markDirty(std::uint32_t index) noexcept;
-    [[nodiscard]] float quantize(std::uint32_t index, float normalized) const noexcept;
+    void markDirty(std::uint32_t index) noexcept PRISM_NONBLOCKING;
+    [[nodiscard]] float quantize(std::uint32_t index,
+                                 float normalized) const noexcept PRISM_NONBLOCKING;
 };
 
 class MidiLearnMapper {

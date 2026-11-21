@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Realtime.h"
+
 #include <array>
 #include <atomic>
 #include <bit>
@@ -14,7 +16,7 @@ template <class T, std::size_t N>
     requires(std::has_single_bit(N) && std::is_trivially_copyable_v<T>)
 class TelemetryRing {
   public:
-    bool push(const T *items, std::size_t count) noexcept {
+    bool push(const T *items, std::size_t count) noexcept PRISM_NONBLOCKING {
         const std::size_t write = write_.load(std::memory_order_relaxed);
         const std::size_t read = read_.load(std::memory_order_acquire);
         if (count > N - (write - read)) {
@@ -29,7 +31,7 @@ class TelemetryRing {
         return true;
     }
 
-    std::size_t pop(T *out, std::size_t capacity) noexcept {
+    std::size_t pop(T *out, std::size_t capacity) noexcept PRISM_NONBLOCKING {
         const std::size_t read = read_.load(std::memory_order_relaxed);
         const std::size_t write = write_.load(std::memory_order_acquire);
         const std::size_t count = write - read < capacity ? write - read : capacity;

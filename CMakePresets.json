@@ -24,11 +24,31 @@
       }
     },
     {
+      "name": "realtime",
+      "inherits": "headless",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "PRISM_REALTIME_SANITIZE": "ON"
+      }
+    },
+    {
       "name": "release",
       "inherits": "headless",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "PRISM_ENABLE_STUDIO": "OFF"
       }
+    },
+    {
+      "name": "bench",
+      "inherits": "release",
+      "cacheVariables": {
+        "PRISM_BUILD_BENCH": "ON"
+      }
+    },
+    {
+      "name": "plugin",
+      "inherits": "release"
     }
   ],
   "buildPresets": [
@@ -41,8 +61,20 @@
       "configurePreset": "sanitized"
     },
     {
+      "name": "realtime",
+      "configurePreset": "realtime"
+    },
+    {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "bench",
+      "configurePreset": "bench"
+    },
+    {
+      "name": "plugin",
+      "configurePreset": "plugin"
     }
   ],
   "testPresets": [
@@ -67,6 +99,16 @@
       }
     },
     {
+      "name": "realtime",
+      "configurePreset": "realtime",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
       "name": "release",
       "configurePreset": "release",
       "output": {
@@ -74,6 +116,36 @@
       },
       "execution": {
         "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "bench",
+      "configurePreset": "bench",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "filter": {
+        "include": {
+          "label": "bench"
+        }
+      }
+    },
+    {
+      "name": "plugin",
+      "configurePreset": "plugin",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "filter": {
+        "include": {
+          "label": "host"
+        }
       }
     }
   ]

@@ -22,11 +22,12 @@ ParameterMirror::ParameterMirror(std::vector<ParameterSpec> specs)
     }
 }
 
-void ParameterMirror::markDirty(std::uint32_t index) noexcept {
+void ParameterMirror::markDirty(std::uint32_t index) noexcept PRISM_NONBLOCKING {
     dirty_[index / 64].fetch_or(std::uint64_t{1} << (index % 64), std::memory_order_acq_rel);
 }
 
-float ParameterMirror::quantize(std::uint32_t index, float normalized) const noexcept {
+float ParameterMirror::quantize(std::uint32_t index,
+                                float normalized) const noexcept PRISM_NONBLOCKING {
     normalized = std::clamp(normalized, 0.0f, 1.0f);
     const ParameterSpec &spec = specs_[index];
     if (spec.step <= 0 || spec.maximum <= spec.minimum) {
@@ -36,7 +37,8 @@ float ParameterMirror::quantize(std::uint32_t index, float normalized) const noe
     return std::round(normalized * steps) / steps;
 }
 
-void ParameterMirror::hostSetNormalized(std::uint32_t index, float normalized) noexcept {
+void ParameterMirror::hostSetNormalized(std::uint32_t index,
+                                        float normalized) noexcept PRISM_NONBLOCKING {
     values_[index].store(quantize(index, normalized), std::memory_order_release);
     markDirty(index);
 }

@@ -1,0 +1,51 @@
+#pragma once
+
+#include "render/RenderSurface.h"
+#include "render/UberBatches.h"
+
+#include <cstdint>
+#include <memory>
+
+namespace prism::backends {
+struct MetalDeviceState;
+struct MetalSurfaceState;
+
+class MetalSurface final : public render::RenderSurface {
+  public:
+    MetalSurface(std::shared_ptr<MetalDeviceState> device, hal::SurfaceDesc desc);
+    ~MetalSurface() override;
+
+    [[nodiscard]] hal::Extent extent() const noexcept override;
+    void resize(hal::Extent extent) override;
+    void loseDevice() noexcept override;
+    [[nodiscard]] bool rebuild() override;
+    [[nodiscard]] bool lost() const noexcept override;
+    [[nodiscard]] bool render(const render::FrameRequest &request) override;
+    [[nodiscard]] bool readback(std::span<float> rgba) override;
+
+    void setEarlyDepth(bool enabled) noexcept;
+    void setFragmentCounting(bool enabled) noexcept;
+    [[nodiscard]] std::uint32_t lastFragmentCount() const noexcept;
+
+  private:
+    std::unique_ptr<MetalSurfaceState> state_;
+};
+
+class MetalDevice final : public render::RenderDevice {
+  public:
+    explicit MetalDevice(std::shared_ptr<MetalDeviceState> state);
+    ~MetalDevice() override;
+
+    [[nodiscard]] hal::BackendKind kind() const noexcept override {
+        return hal::BackendKind::metal;
+    }
+    [[nodiscard]] std::unique_ptr<render::RenderSurface>
+    createRenderSurface(const hal::SurfaceDesc &desc) override;
+    [[nodiscard]] bool reflectLayout(std::span<std::uint32_t, 16> output) const;
+
+    static std::unique_ptr<hal::BackendDevice> create();
+
+  private:
+    std::shared_ptr<MetalDeviceState> state_;
+};
+}

@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
 project(PRISM VERSION 0.1.0 LANGUAGES CXX)
+if(APPLE)
+    enable_language(OBJCXX)
+    set(CMAKE_OBJCXX_STANDARD 23)
+    set(CMAKE_OBJCXX_EXTENSIONS OFF)
+endif()
 
 include(CTest)
 option(PRISM_SANITIZE "Enable memory and undefined-behavior checks" OFF)

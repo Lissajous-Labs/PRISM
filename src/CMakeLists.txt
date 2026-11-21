@@ -43,3 +43,12 @@ add_library(prism_backend_cpu STATIC
     backends/cpu/CpuRefBackend.cpp
 )
 target_link_libraries(prism_backend_cpu PUBLIC prism_render)
+
+if(APPLE)
+    add_library(prism_backend_metal STATIC
+        backends/metal/MetalDevice.mm
+        backends/metal/MetalSurface.mm
+    )
+    target_link_libraries(prism_backend_metal PUBLIC prism_render "-framework Metal" "-framework Foundation")
+    target_compile_options(prism_backend_metal PRIVATE -fobjc-arc)
+endif()

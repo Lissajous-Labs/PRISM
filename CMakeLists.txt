@@ -20,12 +20,7 @@ if(PRISM_SANITIZE)
     target_link_options(prism_options INTERFACE -fsanitize=address,undefined)
 endif()
 
-add_library(prism_math INTERFACE)
-target_link_libraries(prism_math INTERFACE prism_options)
-target_include_directories(prism_math INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-if(NOT MSVC)
-    target_compile_options(prism_math INTERFACE -ffp-contract=off)
-endif()
+add_subdirectory(src)
 
 add_executable(prism_check_comments tools/lint/CheckNoComments.cpp)
 target_link_libraries(prism_check_comments PRIVATE prism_options)

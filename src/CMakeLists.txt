@@ -138,3 +138,14 @@ add_library(prism_widgets STATIC
     widgets/GpuSpectrum.cpp
 )
 target_link_libraries(prism_widgets PUBLIC prism_render)
+
+add_library(prism_controls STATIC
+    widgets/Button.cpp
+    widgets/ComboBox.cpp
+    widgets/NodeCard.cpp
+    widgets/RotaryKnob.cpp
+    widgets/Slider.cpp
+    widgets/VerletCableLayer.cpp
+    widgets/XYPad.cpp
+)
+target_link_libraries(prism_controls PUBLIC prism_widgets prism_host)

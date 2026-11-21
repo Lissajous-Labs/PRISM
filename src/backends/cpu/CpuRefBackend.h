@@ -14,6 +14,9 @@ class CpuRefSurface final : public render::RenderSurface {
 
     [[nodiscard]] hal::Extent extent() const noexcept override { return extent_; }
     void resize(hal::Extent extent) override;
+    void reserveFrame(std::size_t primitives, std::size_t tileEntries) {
+        raster_.reserveFrame(primitives, tileEntries);
+    }
     void loseDevice() noexcept override { lost_ = true; }
     [[nodiscard]] bool rebuild() override;
     [[nodiscard]] bool lost() const noexcept override { return lost_; }

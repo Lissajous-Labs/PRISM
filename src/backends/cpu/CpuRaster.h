@@ -16,6 +16,10 @@ inline constexpr std::uint32_t rasterTileSize = 16;
 class CpuRaster {
   public:
     void resize(std::uint32_t width, std::uint32_t height);
+    void reserveFrame(std::size_t primitives, std::size_t tileEntries) {
+        bounds_.reserve(primitives);
+        tileEntries_.reserve(tileEntries);
+    }
     void render(const render::FrameView &frame, const hal::DamageRegion &damage,
                 math::PremultipliedColor clear);
 

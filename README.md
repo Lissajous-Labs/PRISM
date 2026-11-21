@@ -162,7 +162,10 @@ Presets are defined in `CMakePresets.json`:
 | :--- | :--- | :--- | :--- |
 | `headless` | `Debug` | Off | Default Ninja preset with `BUILD_TESTING=ON` and `compile_commands.json` |
 | `sanitized` | `Debug` | ASan + UBSan | Enables `-fsanitize=address,undefined -fno-omit-frame-pointer` |
-| `release` | `Release` | Off | Optimized release build and full test execution |
+| `release` | `Release` | Off | Optimized release build with studio tooling stripped (`PRISM_ENABLE_STUDIO=OFF`) |
+| `realtime` | `RelWithDebInfo` | RealtimeSanitizer | `-fsanitize=realtime` on telemetry and parameter hooks; bootstrap selects the Homebrew LLVM toolchain |
+| `bench` | `Release` | Off | Adds `bench/prism_workloads` and the `bench`-labelled W1–W6 tests |
+| `plugin` | `Release` | Off | Release configuration used for plugin builds |
 
 Run configure, build, and test individually for any preset:
 
@@ -186,6 +189,17 @@ PRISM enforces correctness, numerical fidelity, and repository hygiene automatic
 cmake --build --preset headless --target lint
 ```
 
+### Workload Benchmarks
+
+`bench/prism_workloads W1`…`W6` renders the six specification workloads at 2560&times;1440 and reports order-statistic Q50/Q99 with Welford moments for host encode, GPU time, draw calls and upload bytes. Each run exits non-zero when an absolute gate fails:
+
+```sh
+cmake --preset bench && cmake --build --preset bench
+ctest --preset bench -L bench --output-on-failure
+```
+
+`scripts/ci/verify_all.sh` runs every preset, the benchmark label, the commit-message audit and, when `PRISM_PLUGIN_VALIDATOR` and `PRISM_PLUGIN_ARTIFACTS` are set, plugin validation at strictness level 10. It lists skipped steps and fails on any red gate.
+
 ---
 
 ## Repository Structure
@@ -194,7 +208,8 @@ cmake --build --preset headless --target lint
 PRISM/
 ├── assets/                 Vector brand marks and adaptive README headers
 ├── cmake/                  Build-time shader embedding script (EmbedShaders.cmake)
-├── scripts/                Bootstrap script for hooks, build, and test execution
+├── bench/                  W1–W6 workload benchmarks and statistics reporting
+├── scripts/                Bootstrap and verify_all certification scripts
 ├── shaders/metal/          Native Apple Metal shaders (8 .metal modules)
 ├── src/
 │   ├── core/               FunctionRef, IntrusivePtr

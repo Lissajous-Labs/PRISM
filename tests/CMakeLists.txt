@@ -48,6 +48,7 @@ if(APPLE)
     prism_test(vector_engine gpu/VectorEngineTests.cpp prism_backend_metal prism_backend_cpu)
     set_tests_properties(vector_engine PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+prism_test(post_effects unit/PostEffectTests.cpp prism_render)
 
 add_test(NAME no_comments COMMAND prism_check_comments "${PROJECT_SOURCE_DIR}")
 add_test(NAME comment_scanner COMMAND prism_check_comments --self-test)

@@ -37,6 +37,9 @@ add_library(prism_render STATIC
     render/GradientTable.cpp
     render/PrimitiveShading.cpp
     render/UberBatches.cpp
+    render/effects/Bloom.cpp
+    render/effects/DualKawase.cpp
+    render/effects/GaussianBlur.cpp
     render/vector/FineRaster.cpp
     render/vector/PathTiler.cpp
     render/vector/StrokeExpander.cpp

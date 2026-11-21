@@ -1,0 +1,41 @@
+#pragma once
+
+#include "hal/DamageRegion.h"
+#include "render/RenderSurface.h"
+
+#include <cstdint>
+#include <memory>
+
+namespace prism::host {
+struct PeerBounds {
+    double x;
+    double y;
+    double width;
+    double height;
+};
+
+class PassiveSurfaceHost {
+  public:
+    PassiveSurfaceHost();
+    ~PassiveSurfaceHost();
+    PassiveSurfaceHost(const PassiveSurfaceHost &) = delete;
+    PassiveSurfaceHost &operator=(const PassiveSurfaceHost &) = delete;
+
+    [[nodiscard]] static bool supported() noexcept;
+
+    [[nodiscard]] bool attach(void *peerView, PeerBounds bounds);
+    void setBounds(PeerBounds bounds);
+    void setLiveResize(bool active);
+    void detach();
+
+    [[nodiscard]] bool attached() const noexcept;
+    [[nodiscard]] double contentsScale() const noexcept;
+    [[nodiscard]] hal::Extent drawableExtent() const noexcept;
+    [[nodiscard]] void *nativeView() const noexcept;
+    [[nodiscard]] bool present(render::RenderSurface &surface, std::uint32_t frame);
+
+  private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+}

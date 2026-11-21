@@ -7,8 +7,8 @@
 #include <thread>
 
 namespace {
-void* (*volatile allocate)(std::size_t) = &::operator new;
-void (*volatile release)(void*) noexcept = &::operator delete;
+void *(*volatile allocate)(std::size_t) = &::operator new;
+void (*volatile release)(void *) noexcept = &::operator delete;
 
 bool check() {
     using prism::test::AllocGuard;
@@ -19,7 +19,7 @@ bool check() {
             AllocGuard inner;
             try {
                 release(allocate(8));
-            } catch (const std::bad_alloc&) {
+            } catch (const std::bad_alloc &) {
                 trapped = true;
             }
             if (!trapped || inner.counts().allocations != 1) {
@@ -32,12 +32,12 @@ bool check() {
         if (::operator new(8, std::nothrow) != nullptr || outer.counts().allocations != 2) {
             return false;
         }
-        if (::operator new[](64, std::align_val_t(64), std::nothrow) != nullptr
-            || outer.counts().allocations != 3) {
+        if (::operator new[](64, std::align_val_t(64), std::nothrow) != nullptr ||
+            outer.counts().allocations != 3) {
             return false;
         }
     }
-    void* pointer = allocate(8);
+    void *pointer = allocate(8);
     {
         AllocGuard guard;
         release(pointer);

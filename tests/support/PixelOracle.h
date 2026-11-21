@@ -18,7 +18,6 @@ struct Lab {
 };
 
 [[nodiscard]] PixelDifference comparePixels(std::span<const Pixel> actual,
-                                          std::span<const Pixel> expected,
-                                          double peak = 1.0);
+                                            std::span<const Pixel> expected, double peak = 1.0);
 [[nodiscard]] double deltaE2000(Lab first, Lab second);
 }

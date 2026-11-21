@@ -22,14 +22,12 @@ std::size_t skipSplices(std::string_view text, std::size_t pos) {
     return pos;
 }
 
-char take(std::string_view text, std::size_t& pos) {
+char take(std::string_view text, std::size_t &pos) {
     pos = skipSplices(text, pos);
     return pos < text.size() ? text[pos++] : '\0';
 }
 
-bool identifier(char c) {
-    return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_';
-}
+bool identifier(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; }
 
 bool hasComment(std::string_view text) {
     std::size_t pos = 0;
@@ -54,8 +52,9 @@ bool hasComment(std::string_view text) {
                 pos = next;
             }
             auto next = pos;
-            if ((token == "R" || token == "u8R" || token == "uR" || token == "UR" || token == "LR")
-                && take(text, next) == '"') {
+            if ((token == "R" || token == "u8R" || token == "uR" || token == "UR" ||
+                 token == "LR") &&
+                take(text, next) == '"') {
                 const auto open = text.find('(', next);
                 if (open == std::string_view::npos || open - next > 16) {
                     throw std::runtime_error("Invalid raw literal delimiter");
@@ -78,9 +77,9 @@ bool hasComment(std::string_view text) {
             while (true) {
                 auto next = pos;
                 const char following = take(text, next);
-                if (!identifier(following) && following != '.' && following != '\''
-                    && !((following == '+' || following == '-')
-                         && (previous == 'e' || previous == 'E' || previous == 'p' || previous == 'P'))) {
+                if (!identifier(following) && following != '.' && following != '\'' &&
+                    !((following == '+' || following == '-') &&
+                      (previous == 'e' || previous == 'E' || previous == 'p' || previous == 'P'))) {
                     break;
                 }
                 previous = following;
@@ -124,8 +123,7 @@ int selfTest() {
         {"auto quote = \"a\\\"" + line + "b\";", false},
         {"auto c = '\\'';", false},
         {"auto n = 0x1'ff;", false},
-        {"auto raw = LR\"(" + block + ")\";" + block, true}
-    };
+        {"auto raw = LR\"(" + block + ")\";" + block, true}};
     for (std::size_t i = 0; i < std::size(cases); ++i) {
         if (hasComment(cases[i].first) != cases[i].second) {
             std::cerr << "Scanner case " << i << " failed\n";
@@ -135,7 +133,7 @@ int selfTest() {
     return 0;
 }
 
-bool checkFile(const std::filesystem::path& path) {
+bool checkFile(const std::filesystem::path &path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         throw std::runtime_error("Cannot read " + path.string());
@@ -149,7 +147,7 @@ bool checkFile(const std::filesystem::path& path) {
 }
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     try {
         if (argc == 2 && std::string_view(argv[1]) == "--self-test") {
             return selfTest();
@@ -163,27 +161,27 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Source root does not exist");
         }
         bool clean = true;
-        for (const auto* directory : {"src", "shaders", "app", "bench", "tests", "tools"}) {
+        for (const auto *directory : {"src", "shaders", "app", "bench", "tests", "tools"}) {
             const auto path = root / directory;
             if (!std::filesystem::exists(path)) {
                 continue;
             }
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(path)) {
+            for (const auto &entry : std::filesystem::recursive_directory_iterator(path)) {
                 if (!entry.is_regular_file()) {
                     continue;
                 }
                 const auto extension = entry.path().extension().string();
-                if (extension == ".h" || extension == ".hpp" || extension == ".cpp"
-                    || extension == ".c" || extension == ".mm" || extension == ".m"
-                    || extension == ".vert" || extension == ".frag" || extension == ".comp"
-                    || extension == ".glsl" || extension == ".metal" || extension == ".hlsl"
-                    || extension == ".wgsl" || extension == ".inl") {
+                if (extension == ".h" || extension == ".hpp" || extension == ".cpp" ||
+                    extension == ".c" || extension == ".mm" || extension == ".m" ||
+                    extension == ".vert" || extension == ".frag" || extension == ".comp" ||
+                    extension == ".glsl" || extension == ".metal" || extension == ".hlsl" ||
+                    extension == ".wgsl" || extension == ".inl") {
                     clean = checkFile(entry.path()) && clean;
                 }
             }
         }
         return clean ? 0 : 1;
-    } catch (const std::exception& error) {
+    } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';
         return 2;
     }

@@ -40,14 +40,12 @@ PixelDifference comparePixels(std::span<const Pixel> actual, std::span<const Pix
         return {0, std::numeric_limits<double>::infinity()};
     }
     const double meanScaledSquares = scaledSquares / static_cast<double>(actual.size()) / 4;
-    return {maximum, 20 * (std::log10(peak) - std::log10(maximum))
-                         - 10 * std::log10(meanScaledSquares)};
+    return {maximum,
+            20 * (std::log10(peak) - std::log10(maximum)) - 10 * std::log10(meanScaledSquares)};
 }
 
 namespace {
-constexpr double radians(double degrees) noexcept {
-    return degrees * std::numbers::pi / 180;
-}
+constexpr double radians(double degrees) noexcept { return degrees * std::numbers::pi / 180; }
 
 double chromaFraction(double chroma) noexcept {
     if (chroma > 25) {
@@ -106,17 +104,16 @@ double deltaE2000(Lab first, Lab second) {
             meanHue = (meanHue - 2 * std::numbers::pi) / 2;
         }
     }
-    const double t = 1 - 0.17 * std::cos(meanHue - radians(30))
-                      + 0.24 * std::cos(2 * meanHue)
-                      + 0.32 * std::cos(3 * meanHue + radians(6))
-                      - 0.20 * std::cos(4 * meanHue - radians(63));
+    const double t = 1 - 0.17 * std::cos(meanHue - radians(30)) + 0.24 * std::cos(2 * meanHue) +
+                     0.32 * std::cos(3 * meanHue + radians(6)) -
+                     0.20 * std::cos(4 * meanHue - radians(63));
     const double centeredL = meanL - 50;
     const double sL = 1 + 0.015 * centeredL * centeredL / std::hypot(centeredL, std::sqrt(20.0));
     const double sC = 1 + 0.045 * meanC;
     const double sH = 1 + 0.015 * meanC * t;
     const double hueOffset = (meanHue - radians(275)) / radians(25);
-    const double rotation = -2 * std::sqrt(chromaFraction(meanC))
-                            * std::sin(radians(60) * std::exp(-hueOffset * hueOffset));
+    const double rotation = -2 * std::sqrt(chromaFraction(meanC)) *
+                            std::sin(radians(60) * std::exp(-hueOffset * hueOffset));
     const double l = deltaL / sL;
     const double c = deltaC / sC;
     const double h = deltaH / sH;

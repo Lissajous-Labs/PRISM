@@ -22,20 +22,18 @@ bool check() {
     const Contour diagonal[] = {triangle};
     const Contour bowtie[] = {crossed};
     const Contour emptyArea[] = {degenerate};
-    if (stratifiedCoverage(full, {0, 0}) != 1 || stratifiedCoverage(full, {1, 0}) != 0
-        || stratifiedCoverage(cutout, {0, 0}) != 0.75
-        || stratifiedCoverage(nested, {0, 0}) != 1
-        || stratifiedCoverage(nested, {0, 0}, FillRule::evenOdd) != 0.75
-        || stratifiedCoverage(duplicate, {0, 0}) != 1
-        || stratifiedCoverage(duplicate, {0, 0}, FillRule::evenOdd) != 0
-        || stratifiedCoverage(emptyArea, {0, 0}) != 0
-        || stratifiedCoverage({}, {0, 0}) != 0) {
+    if (stratifiedCoverage(full, {0, 0}) != 1 || stratifiedCoverage(full, {1, 0}) != 0 ||
+        stratifiedCoverage(cutout, {0, 0}) != 0.75 || stratifiedCoverage(nested, {0, 0}) != 1 ||
+        stratifiedCoverage(nested, {0, 0}, FillRule::evenOdd) != 0.75 ||
+        stratifiedCoverage(duplicate, {0, 0}) != 1 ||
+        stratifiedCoverage(duplicate, {0, 0}, FillRule::evenOdd) != 0 ||
+        stratifiedCoverage(emptyArea, {0, 0}) != 0 || stratifiedCoverage({}, {0, 0}) != 0) {
         return false;
     }
     for (std::uint64_t seed = 0; seed < 32; ++seed) {
         for (const auto rule : {FillRule::nonZero, FillRule::evenOdd}) {
-            if (std::abs(stratifiedCoverage(diagonal, {0, 0}, rule, seed) - 0.5) > 0.006
-                || std::abs(stratifiedCoverage(bowtie, {0, 0}, rule, seed) - 0.5) > 0.006) {
+            if (std::abs(stratifiedCoverage(diagonal, {0, 0}, rule, seed) - 0.5) > 0.006 ||
+                std::abs(stratifiedCoverage(bowtie, {0, 0}, rule, seed) - 0.5) > 0.006) {
                 return false;
             }
         }
@@ -44,10 +42,16 @@ bool check() {
     bool originRejected = false;
     const Point invalid[] = {{std::numeric_limits<double>::quiet_NaN(), 0}, {1, 0}, {0, 1}};
     const Contour malformed[] = {invalid};
-    try { static_cast<void>(stratifiedCoverage(malformed, {0, 0})); }
-    catch (const std::invalid_argument&) { invalidRejected = true; }
-    try { static_cast<void>(stratifiedCoverage(full, {1e100, 0})); }
-    catch (const std::invalid_argument&) { originRejected = true; }
+    try {
+        static_cast<void>(stratifiedCoverage(malformed, {0, 0}));
+    } catch (const std::invalid_argument &) {
+        invalidRejected = true;
+    }
+    try {
+        static_cast<void>(stratifiedCoverage(full, {1e100, 0}));
+    } catch (const std::invalid_argument &) {
+        originRejected = true;
+    }
     const auto expected = stratifiedCoverage(bowtie, {0, 0}, FillRule::nonZero, 19);
     AllocGuard guard;
     const auto observed = stratifiedCoverage(bowtie, {0, 0}, FillRule::nonZero, 19);

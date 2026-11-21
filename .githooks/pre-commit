@@ -7,3 +7,8 @@ snapshot=$(mktemp -d)
 trap 'rm -rf "$snapshot"' EXIT HUP INT TERM
 git checkout-index --all --prefix="$snapshot/"
 "$root/build/hooks/prism_check_comments" "$snapshot"
+formatter=${CLANG_FORMAT:-$(command -v clang-format || true)}
+if [ -n "$formatter" ]; then
+    cd "$snapshot"
+    git -C "$root" ls-files -- '*.h' '*.hpp' '*.cpp' '*.mm' | xargs "$formatter" --dry-run --Werror
+fi

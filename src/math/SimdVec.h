@@ -12,20 +12,19 @@
 #endif
 
 namespace prism::math {
-template<class T>
+template <class T>
 concept VectorScalar = std::floating_point<T> || std::unsigned_integral<T>;
 
 namespace detail {
-template<VectorScalar T, std::size_t N>
-struct NativeVector {
+template <VectorScalar T, std::size_t N> struct NativeVector {
     typedef T Type __attribute__((vector_size(sizeof(T) * N)));
 };
 }
 
-template<VectorScalar T, std::size_t N>
-requires (N > 0 && std::has_single_bit(N) && sizeof(T) * N <= 32)
+template <VectorScalar T, std::size_t N>
+    requires(N > 0 && std::has_single_bit(N) && sizeof(T) * N <= 32)
 class SimdVec {
-public:
+  public:
     using Scalar = T;
     static constexpr std::size_t size = N;
 
@@ -34,12 +33,14 @@ public:
     constexpr explicit SimdVec(T value) noexcept { lanes_.fill(value); }
 
     [[nodiscard]] constexpr T operator[](std::size_t index) const noexcept { return lanes_[index]; }
-    constexpr T& operator[](std::size_t index) noexcept { return lanes_[index]; }
-    [[nodiscard]] constexpr const std::array<T, N>& lanes() const noexcept { return lanes_; }
+    constexpr T &operator[](std::size_t index) noexcept { return lanes_[index]; }
+    [[nodiscard]] constexpr const std::array<T, N> &lanes() const noexcept { return lanes_; }
 
     [[nodiscard]] friend constexpr SimdVec operator+(SimdVec left, SimdVec right) noexcept {
         if consteval {
-            for (std::size_t i = 0; i < N; ++i) { left.lanes_[i] += right.lanes_[i]; }
+            for (std::size_t i = 0; i < N; ++i) {
+                left.lanes_[i] += right.lanes_[i];
+            }
             return left;
         } else {
             return fromNative(left.native() + right.native());
@@ -47,7 +48,9 @@ public:
     }
     [[nodiscard]] friend constexpr SimdVec operator-(SimdVec left, SimdVec right) noexcept {
         if consteval {
-            for (std::size_t i = 0; i < N; ++i) { left.lanes_[i] -= right.lanes_[i]; }
+            for (std::size_t i = 0; i < N; ++i) {
+                left.lanes_[i] -= right.lanes_[i];
+            }
             return left;
         } else {
             return fromNative(left.native() - right.native());
@@ -55,51 +58,65 @@ public:
     }
     [[nodiscard]] friend constexpr SimdVec operator*(SimdVec left, SimdVec right) noexcept {
         if consteval {
-            for (std::size_t i = 0; i < N; ++i) { left.lanes_[i] *= right.lanes_[i]; }
+            for (std::size_t i = 0; i < N; ++i) {
+                left.lanes_[i] *= right.lanes_[i];
+            }
             return left;
         } else {
             return fromNative(left.native() * right.native());
         }
     }
     [[nodiscard]] friend constexpr SimdVec operator/(SimdVec left, SimdVec right) noexcept
-        requires std::floating_point<T> {
+        requires std::floating_point<T>
+    {
         if consteval {
-            for (std::size_t i = 0; i < N; ++i) { left.lanes_[i] /= right.lanes_[i]; }
+            for (std::size_t i = 0; i < N; ++i) {
+                left.lanes_[i] /= right.lanes_[i];
+            }
             return left;
         } else {
             return fromNative(left.native() / right.native());
         }
     }
     [[nodiscard]] friend constexpr SimdVec operator^(SimdVec left, SimdVec right) noexcept
-        requires std::unsigned_integral<T> {
+        requires std::unsigned_integral<T>
+    {
         if consteval {
-            for (std::size_t i = 0; i < N; ++i) { left.lanes_[i] ^= right.lanes_[i]; }
+            for (std::size_t i = 0; i < N; ++i) {
+                left.lanes_[i] ^= right.lanes_[i];
+            }
             return left;
         } else {
             return fromNative(left.native() ^ right.native());
         }
     }
     [[nodiscard]] friend constexpr SimdVec operator&(SimdVec left, SimdVec right) noexcept
-        requires std::unsigned_integral<T> {
+        requires std::unsigned_integral<T>
+    {
         if consteval {
-            for (std::size_t i = 0; i < N; ++i) { left.lanes_[i] &= right.lanes_[i]; }
+            for (std::size_t i = 0; i < N; ++i) {
+                left.lanes_[i] &= right.lanes_[i];
+            }
             return left;
         } else {
             return fromNative(left.native() & right.native());
         }
     }
     [[nodiscard]] friend constexpr SimdVec operator|(SimdVec left, SimdVec right) noexcept
-        requires std::unsigned_integral<T> {
+        requires std::unsigned_integral<T>
+    {
         if consteval {
-            for (std::size_t i = 0; i < N; ++i) { left.lanes_[i] |= right.lanes_[i]; }
+            for (std::size_t i = 0; i < N; ++i) {
+                left.lanes_[i] |= right.lanes_[i];
+            }
             return left;
         } else {
             return fromNative(left.native() | right.native());
         }
     }
 
-    template<std::size_t... Indices>
-    requires (sizeof...(Indices) == N && ((Indices < N) && ...))
+    template <std::size_t... Indices>
+        requires(sizeof...(Indices) == N && ((Indices < N) && ...))
     [[nodiscard]] constexpr SimdVec shuffle() const noexcept {
         if consteval {
             return SimdVec(std::array<T, N>{lanes_[Indices]...});
@@ -116,7 +133,11 @@ public:
 
     [[nodiscard]] constexpr bool isZero() const noexcept {
         if consteval {
-            for (const T lane : lanes_) { if (lane != 0) { return false; } }
+            for (const T lane : lanes_) {
+                if (lane != 0) {
+                    return false;
+                }
+            }
             return true;
         } else {
             const auto mask = native() != Native{};
@@ -124,26 +145,32 @@ public:
         }
     }
 
-    template<VectorScalar U>
-    requires (sizeof(U) == sizeof(T))
+    template <VectorScalar U>
+        requires(sizeof(U) == sizeof(T))
     [[nodiscard]] constexpr SimdVec<U, N> bitsAs() const noexcept {
         return SimdVec<U, N>(std::bit_cast<std::array<U, N>>(lanes_));
     }
 
-    void streamStore(T* destination) const noexcept requires (sizeof(T) * N >= 16) {
+    void streamStore(T *destination) const noexcept
+        requires(sizeof(T) * N >= 16)
+    {
 #if defined(__clang__)
-        __builtin_nontemporal_store(native(), reinterpret_cast<Native*>(destination));
+        __builtin_nontemporal_store(native(), reinterpret_cast<Native *>(destination));
 #elif defined(__x86_64__)
-        const auto blocks = std::bit_cast<std::array<std::array<std::uint64_t, 2>, sizeof(T) * N / 16>>(lanes_);
+        const auto blocks =
+            std::bit_cast<std::array<std::array<std::uint64_t, 2>, sizeof(T) * N / 16>>(lanes_);
         for (std::size_t i = 0; i < blocks.size(); ++i) {
             const auto block = std::bit_cast<__m128i>(blocks[i]);
-            _mm_stream_si128(reinterpret_cast<__m128i*>(destination) + i, block);
+            _mm_stream_si128(reinterpret_cast<__m128i *>(destination) + i, block);
         }
 #elif defined(__aarch64__)
         const auto words = std::bit_cast<std::array<std::uint64_t, sizeof(T) * N / 8>>(lanes_);
         for (std::size_t i = 0; i < words.size(); i += 2) {
-            auto* output = reinterpret_cast<std::uint64_t*>(destination) + i;
-            asm volatile("stnp %1, %2, [%0]" : : "r"(output), "r"(words[i]), "r"(words[i + 1]) : "memory");
+            auto *output = reinterpret_cast<std::uint64_t *>(destination) + i;
+            asm volatile("stnp %1, %2, [%0]"
+                         :
+                         : "r"(output), "r"(words[i]), "r"(words[i + 1])
+                         : "memory");
         }
 #else
         static_assert(sizeof(T) == 0, "Streaming stores require a supported compiler target");
@@ -158,7 +185,7 @@ public:
 #endif
     }
 
-private:
+  private:
     using Native = typename detail::NativeVector<T, N>::Type;
     std::array<T, N> lanes_{};
 
@@ -167,8 +194,7 @@ private:
         return SimdVec(std::bit_cast<std::array<T, N>>(value));
     }
 
-    template<std::size_t Width>
-    static constexpr void reduceSum(SimdVec& values) noexcept {
+    template <std::size_t Width> static constexpr void reduceSum(SimdVec &values) noexcept {
         if constexpr (Width > 1) {
             for (std::size_t i = 0; i < Width / 2; ++i) {
                 values[i] = values[2 * i] + values[2 * i + 1];
@@ -178,7 +204,7 @@ private:
     }
 };
 
-template<std::size_t N>
+template <std::size_t N>
 [[nodiscard]] constexpr std::uint32_t bmask(SimdVec<std::uint8_t, N> bytes) noexcept {
     std::uint32_t mask = 0;
     for (std::size_t i = 0; i < N; ++i) {

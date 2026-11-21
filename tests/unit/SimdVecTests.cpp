@@ -1,5 +1,5 @@
-#include "math/SimdVec.h"
 #include "../support/AllocGuard.h"
+#include "math/SimdVec.h"
 
 #include <array>
 #include <bit>
@@ -16,7 +16,8 @@ constexpr auto expected = (first * second + first) / second;
 static_assert(first.shuffle<3, 2, 1, 0>()[0] == 8);
 static_assert(first.sum() == 9.75f);
 static_assert(SimdVec<std::uint32_t, 4>(0).isZero());
-static_assert(prism::math::bmask(SimdVec<std::uint8_t, 4>(std::array<std::uint8_t, 4>{0, 128, 255, 1})) == 6);
+static_assert(prism::math::bmask(SimdVec<std::uint8_t, 4>(std::array<std::uint8_t, 4>{0, 128, 255,
+                                                                                      1})) == 6);
 
 bool check() {
     volatile float input = 1.25f;
@@ -32,7 +33,8 @@ bool check() {
         return false;
     }
     const auto negZero = F(-0.0f);
-    if (!negZero.isZero() || !F(0).isZero() || F(std::numeric_limits<float>::quiet_NaN()).isZero()) {
+    if (!negZero.isZero() || !F(0).isZero() ||
+        F(std::numeric_limits<float>::quiet_NaN()).isZero()) {
         return false;
     }
     const auto bits = negZero.bitsAs<std::uint32_t>();

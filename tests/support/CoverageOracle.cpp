@@ -49,8 +49,8 @@ bool inside(std::span<const Contour> contours, Point sample, FillRule rule) noex
 
 double stratifiedCoverage(std::span<const Contour> contours, Point pixelOrigin, FillRule rule,
                           std::uint64_t seed) {
-    if (!std::isfinite(pixelOrigin.x) || !std::isfinite(pixelOrigin.y)
-        || pixelOrigin.x + 1 == pixelOrigin.x || pixelOrigin.y + 1 == pixelOrigin.y) {
+    if (!std::isfinite(pixelOrigin.x) || !std::isfinite(pixelOrigin.y) ||
+        pixelOrigin.x + 1 == pixelOrigin.x || pixelOrigin.y + 1 == pixelOrigin.y) {
         throw std::invalid_argument("Pixel origin must support unit-pixel coordinates");
     }
     for (const auto contour : contours) {
@@ -65,8 +65,9 @@ double stratifiedCoverage(std::span<const Contour> contours, Point pixelOrigin, 
     for (std::uint64_t y = 0; y < strata; ++y) {
         for (std::uint64_t x = 0; x < strata; ++x) {
             const auto index = y * strata + x;
-            const Point sample{pixelOrigin.x + (static_cast<double>(x) + jitter(seed, 2 * index)) / strata,
-                               pixelOrigin.y + (static_cast<double>(y) + jitter(seed, 2 * index + 1)) / strata};
+            const Point sample{
+                pixelOrigin.x + (static_cast<double>(x) + jitter(seed, 2 * index)) / strata,
+                pixelOrigin.y + (static_cast<double>(y) + jitter(seed, 2 * index + 1)) / strata};
             hits += inside(contours, sample, rule) ? 1 : 0;
         }
     }

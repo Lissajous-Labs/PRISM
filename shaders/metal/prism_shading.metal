@@ -232,11 +232,11 @@ ShadeOut shadeTexture(PrimitiveDesc d, device const float *payload, TransformRec
     return result;
 }
 
-float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, TransformRecord t,
-                        texture2d<float> texture, texture2d<float> blueNoise, texture2d<float> gradients, float2 p);
+float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, device const float4 *cells,
+                        TransformRecord t, float2 p);
 
 ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gradients, texture2d<float> texture,
-                        texture2d<float> blueNoise, float2 physical) {
+                        float2 physical) {
     ShadeOut result;
     result.color = float4(0.0f);
     result.coverage = float3(0.0f);
@@ -250,7 +250,7 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
     if (kind >= kindGlyphAlpha && kind <= kindTexture) {
         result = shadeTexture(d, frame.payload, t, texture, local);
     } else if (kind == kindHalftone) {
-        result.color = shadeHalftoneGpu(d, frame.payload, t, texture, blueNoise, gradients, local);
+        result.color = shadeHalftoneGpu(d, frame.payload, frame.halftoneCells, t, local);
     } else if (kind == kindFormant) {
         result.color = shadeFormantGpu(d, frame.payload, t, local, texture, physical);
     } else if (kind == kindShadow) {

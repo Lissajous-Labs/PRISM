@@ -35,6 +35,12 @@ float halftoneCoverage(TransformRecord t, float2 p, float2 center, float2 axis, 
     if (abs(d) >= reach) {
         return d < 0.0f ? 1.0f : 0.0f;
     }
+    if ((mode & 4u) == 0u && t.inverse[1] == 0.0f && t.inverse[2] == 0.0f && axis.y == 0.0f && axis.x > 0.0f) {
+        float2 footprint = 0.5f * abs(float2(t.inverse[0], t.inverse[3]));
+        float2 q = p - center;
+        float value = roundedSpotBoxArea(q - footprint, q + footprint, float2(halfSize.x * fill, halfSize.y), radius);
+        return clamp(value / (4.0f * footprint.x * footprint.y), 0.0f, 1.0f);
+    }
     if ((mode & 4u) == 0u || power == 2.0f) {
         CoveragePolygon pixel;
         pixel.count = 4;
@@ -78,26 +84,14 @@ float halftoneArea(float2 halfSize, float fill, float radius, float area, float 
     return (4.0f * halfSize.x * fill * halfSize.y - (4.0f - M_PI_F) * r * r) / area;
 }
 
-float3 shadeHalftoneCellGpu(PrimitiveDesc d, device const float *payload, TransformRecord t,
-                            texture2d<float> texture, texture2d<float> blueNoise, texture2d<float> gradients,
-                            float2 p, float2 cell, float2 center, float eta, bool primary) {
-    device const float *h = payload + d.payloadOffset;
+float4 halftoneCellState(PrimitiveDesc d, device const float *h, texture2d<float> texture,
+                         texture2d<float> blueNoise, texture2d<float> gradients, float2 cell, float2 center) {
     uint mode = as_type<uint>(h[28]);
-    float2 b1 = float2(h[4], h[5]), b2 = float2(h[6], h[7]), origin = float2(h[12], h[13]);
+    float2 b1 = float2(h[4], h[5]), b2 = float2(h[6], h[7]);
     float area = abs(b1.x * b2.y - b1.y * b2.x);
     float2 pitch = float2(length(b1), area / length(b1));
-    float2 axis = b1 / pitch.x;
-    float2 halfSize = max(float2(0.0f), (pitch - float2(h[14], h[15])) * 0.5f);
-    float reach = 0.71f * sqrt(t.inverse[0] * t.inverse[0] + t.inverse[1] * t.inverse[1] +
-                               t.inverse[2] * t.inverse[2] + t.inverse[3] * t.inverse[3]);
-    float2 delta = p - center;
-    if (!primary && (eta == 0.0f || abs(dot(delta, axis)) > halfSize.x + reach ||
-                      abs(dot(delta, float2(-axis.y, axis.x))) > halfSize.y + reach)) {
-        return float3(0.0f);
-    }
     float energy = 0.0f, ridge = 0.0f;
     bool clean = (mode & 32u) != 0u;
-    bool paired = (mode & 64u) != 0u;
     if ((mode & 1u) != 0u) {
         float u = (center.x - h[0]) / (h[2] - h[0]);
         float4 band = sampleBilinear(texture, float2(u, 0.5f));
@@ -145,6 +139,64 @@ float3 shadeHalftoneCellGpu(PrimitiveDesc d, device const float *payload, Transf
     float tone = halftoneIgnition(energy, threshold, h[20], h[21], h[22]);
     float widthTone = halftoneIgnition(ridge, threshold, h[20], h[21], h[22]);
     float fillX = h[18] + (1.0f - h[18]) * pow(widthTone, h[19]);
+    float position = tone * 255.0f;
+    uint lower = uint(position), upper = min(lower + 1u, 255u);
+    float3 emit = mix(gradients.read(uint2(lower, d.gradientOffset)).rgb, gradients.read(uint2(upper, d.gradientOffset)).rgb, position - float(lower));
+    return float4(emit, fillX);
+}
+
+float2 halftoneCellCenter(device const float *h, float2 cell) {
+    float shift = (as_type<uint>(h[28]) & 2u) != 0u ? 0.0f : 0.5f;
+    return float2(h[12], h[13]) + float2(h[4], h[5]) * (cell.x + shift) + float2(h[6], h[7]) * (cell.y + shift);
+}
+
+struct HalftoneCellJob {
+    uint primitive;
+    uint width;
+    uint height;
+    uint base;
+};
+
+kernel void halftoneCells(device const PrimitiveDesc *primitives [[buffer(0)]], device const float *payload [[buffer(1)]],
+                          device float4 *cells [[buffer(2)]], constant HalftoneCellJob &job [[buffer(3)]],
+                          texture2d<float> gradients [[texture(0)]], texture2d<float> field [[texture(1)]],
+                          texture2d<float> blueNoise [[texture(2)]], uint2 gid [[thread_position_in_grid]]) {
+    if (gid.x >= job.width || gid.y >= job.height) {
+        return;
+    }
+    PrimitiveDesc d = primitives[job.primitive];
+    device const float *h = payload + d.payloadOffset;
+    float2 cell = float2(d.params[1], d.params[2]) + float2(gid);
+    cells[job.base + gid.y * job.width + gid.x] =
+        halftoneCellState(d, h, field, blueNoise, gradients, cell, halftoneCellCenter(h, cell));
+}
+
+float3 shadeHalftoneCellGpu(PrimitiveDesc d, device const float *payload, device const float4 *cells,
+                            TransformRecord t, float2 p, float2 cell, float2 center, float eta, bool primary) {
+    device const float *h = payload + d.payloadOffset;
+    uint mode = as_type<uint>(h[28]);
+    float2 b1 = float2(h[4], h[5]), b2 = float2(h[6], h[7]);
+    float area = abs(b1.x * b2.y - b1.y * b2.x);
+    float2 pitch = float2(length(b1), area / length(b1));
+    float2 axis = b1 / pitch.x;
+    float2 halfSize = max(float2(0.0f), (pitch - float2(h[14], h[15])) * 0.5f);
+    float reach = 0.71f * sqrt(t.inverse[0] * t.inverse[0] + t.inverse[1] * t.inverse[1] +
+                               t.inverse[2] * t.inverse[2] + t.inverse[3] * t.inverse[3]);
+    float2 delta = p - center;
+    if (!primary && (eta == 0.0f || abs(dot(delta, axis)) > halfSize.x + reach ||
+                      abs(dot(delta, float2(-axis.y, axis.x))) > halfSize.y + reach)) {
+        return float3(0.0f);
+    }
+    bool clean = (mode & 32u) != 0u;
+    bool paired = (mode & 64u) != 0u;
+    int2 index = int2(cell) - int2(d.params[1], d.params[2]);
+    uint columns = uint(d.params[3]);
+    if (index.x < 0 || index.y < 0 || uint(index.x) >= columns) {
+        return float3(0.0f);
+    }
+    float4 state = cells[as_type<uint>(h[31]) + uint(index.y) * columns + uint(index.x)];
+    float3 emit = state.rgb;
+    float fillX = state.a;
     float spot = 0.0f;
     float grid = 0.0f;
     if (paired) {
@@ -156,8 +208,9 @@ float3 shadeHalftoneCellGpu(PrimitiveDesc d, device const float *payload, Transf
         if (eta > 0.0f) {
             spot = eta * min(1.0f, halftoneCoverage(t, p, left, axis, subHalf, fillX, h[16], h[17], mode) +
                                    halftoneCoverage(t, p, right, axis, subHalf, fillX, h[16], h[17], mode));
-            grid = eta * min(1.0f, halftoneCoverage(t, p, left, axis, subHalf, 1.0f, h[16], h[17], mode) +
-                                   halftoneCoverage(t, p, right, axis, subHalf, 1.0f, h[16], h[17], mode));
+            grid = clean ? 0.0f
+                         : eta * min(1.0f, halftoneCoverage(t, p, left, axis, subHalf, 1.0f, h[16], h[17], mode) +
+                                               halftoneCoverage(t, p, right, axis, subHalf, 1.0f, h[16], h[17], mode));
         }
         if (primary) {
             spot += (1.0f - eta) * 2.0f * halftoneArea(subHalf, fillX, h[16], area, d.params[0], mode);
@@ -165,22 +218,19 @@ float3 shadeHalftoneCellGpu(PrimitiveDesc d, device const float *payload, Transf
         }
     } else {
         spot = eta > 0.0f ? eta * halftoneCoverage(t, p, center, axis, halfSize, fillX, h[16], h[17], mode) : 0.0f;
-        grid = eta > 0.0f ? eta * halftoneCoverage(t, p, center, axis, halfSize, 1.0f, h[16], h[17], mode) : 0.0f;
+        grid = eta > 0.0f && !clean ? eta * halftoneCoverage(t, p, center, axis, halfSize, 1.0f, h[16], h[17], mode) : 0.0f;
         if (primary) {
             spot += (1.0f - eta) * halftoneArea(halfSize, fillX, h[16], area, d.params[0], mode);
             grid += (1.0f - eta) * halftoneArea(halfSize, 1.0f, h[16], area, d.params[0], mode);
         }
     }
-    float position = tone * 255.0f;
-    uint lower = uint(position), upper = min(lower + 1u, 255u);
-    float3 emit = mix(gradients.read(uint2(lower, d.gradientOffset)).rgb, gradients.read(uint2(upper, d.gradientOffset)).rgb, position - float(lower));
     float3 background = clean ? float3(0.003945f) : float3(0.0033465358f, 0.0036765073f, 0.0043914420f);
     float3 gridColor = clean ? background : float3(0.0095f, 0.0072f, 0.0060f);
     return grid * (gridColor - background) + spot * (emit - gridColor);
 }
 
-float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, TransformRecord t,
-                        texture2d<float> texture, texture2d<float> blueNoise, texture2d<float> gradients, float2 p) {
+float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, device const float4 *cells,
+                        TransformRecord t, float2 p) {
     device const float *h = payload + d.payloadOffset;
     uint mode = as_type<uint>(h[28]);
     bool clean = (mode & 32u) != 0u;
@@ -206,9 +256,18 @@ float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, TransformR
     float2 physicalB2 = float2(t.forward[0] * b2.x + t.forward[2] * b2.y, t.forward[1] * b2.x + t.forward[3] * b2.y);
     float eta = smoothstep(2.72f, 2.98f, min(length(physicalB1), length(physicalB2)));
     float3 color = clean ? float3(0.003945f) : float3(0.0033465358f, 0.0036765073f, 0.0043914420f);
-    for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
-            color += shadeHalftoneCellGpu(d, payload, t, texture, blueNoise, gradients, p,
+    int2 low = int2(-1), high = int2(1);
+    if ((mode & 2u) == 0u) {
+        float2 fraction = coordinates - cell;
+        low = int2(fraction.x < 0.5f ? -1 : 0, fraction.y < 0.5f ? -1 : 0);
+        high = low + 1;
+    }
+    if (eta == 0.0f) {
+        low = high = int2(0);
+    }
+    for (int y = low.y; y <= high.y; ++y) {
+        for (int x = low.x; x <= high.x; ++x) {
+            color += shadeHalftoneCellGpu(d, payload, cells, t, p,
                                           cell + float2(x, y), center + float(x) * b1 + float(y) * b2,
                                           eta, x == 0 && y == 0);
         }

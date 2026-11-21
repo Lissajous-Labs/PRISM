@@ -48,7 +48,6 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
         buffers_.resize(frame.paths.size());
     }
     const std::size_t tiles = grid_.count();
-    const std::size_t partitions = (tiles + scanPartition - 1) / scanPartition;
     id<MTLDevice> gpu = device.device;
     for (std::size_t i = 0; i < frame.paths.size(); ++i) {
         const auto &draw = frame.paths[i];
@@ -61,14 +60,10 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
         upload(gpu, b.backdrops, nullptr, tiles * 4);
         upload(gpu, b.cursors, nullptr, tiles * 4);
         upload(gpu, b.pieces, nullptr, pieceBound(segments, grid_) * 8);
-        upload(gpu, b.status, nullptr, partitions * 4);
-        upload(gpu, b.ticket, nullptr, 4);
         id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
         zero(blit, b.counts, tiles * 4);
         zero(blit, b.rowDeltas, (grid_.columns + 1) * grid_.rows * 4);
         zero(blit, b.cursors, tiles * 4);
-        zero(blit, b.status, partitions * 4);
-        zero(blit, b.ticket, 4);
         [blit endEncoding];
         const PathUniforms uniforms{grid_.columns,
                                     grid_.rows,
@@ -90,10 +85,8 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
         [encoder setComputePipelineState:device.pathScan];
         [encoder setBuffer:b.counts offset:0 atIndex:0];
         [encoder setBuffer:b.offsets offset:0 atIndex:1];
-        [encoder setBuffer:b.status offset:0 atIndex:2];
-        [encoder setBuffer:b.ticket offset:0 atIndex:3];
-        [encoder setBytes:&uniforms length:sizeof(uniforms) atIndex:4];
-        [encoder dispatchThreadgroups:MTLSizeMake(partitions, 1, 1)
+        [encoder setBytes:&uniforms length:sizeof(uniforms) atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1)
                 threadsPerThreadgroup:MTLSizeMake(scanPartition, 1, 1)];
         [encoder setComputePipelineState:device.pathBackdrop];
         [encoder setBuffer:b.rowDeltas offset:0 atIndex:0];

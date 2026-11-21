@@ -25,7 +25,7 @@ class MetalFormantCache {
         std::uint32_t primitive = 0;
         bool dirty = true;
     };
-    std::array<Entry, 8> entries_{};
+    std::array<Entry, formantSlots> entries_{};
     std::size_t count_ = 0;
 };
 }

@@ -155,6 +155,7 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
     state->bloomComposite = compute("bloomCompositePass");
     state->shadowProbe = compute("shadowProbe");
     state->formantColumns = compute("formantColumns");
+    state->halftoneCells = compute("halftoneCells");
     MTLTextureDescriptor *empty =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
                                                            width:1
@@ -167,7 +168,7 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
                              withBytes:zero
                            bytesPerRow:16];
     if (!state->opaque || !state->counting || !state->countingCore || !state->clear ||
-        !state->reflect || !state->formantColumns) {
+        !state->reflect || !state->formantColumns || !state->halftoneCells) {
         return nullptr;
     }
     return state;

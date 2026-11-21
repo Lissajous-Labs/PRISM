@@ -78,3 +78,33 @@ float roundedSpotPixelArea(thread const CoveragePolygon &pixel, float2 halfSize,
     }
     return area;
 }
+float coverageBoxOverlap(float2 lo, float2 hi, float2 a, float2 b) {
+    float2 extent = max(float2(0.0f), min(hi, b) - max(lo, a));
+    return extent.x * extent.y;
+}
+float roundedSpotBoxArea(float2 lo, float2 hi, float2 halfSize, float radius) {
+    float r = clamp(radius, 0.0f, min(halfSize.x, halfSize.y));
+    float area = coverageBoxOverlap(lo, hi, float2(-halfSize.x + r, -halfSize.y), float2(halfSize.x - r, halfSize.y)) +
+                 coverageBoxOverlap(lo, hi, float2(-halfSize.x, -halfSize.y + r), float2(-halfSize.x + r, halfSize.y - r)) +
+                 coverageBoxOverlap(lo, hi, float2(halfSize.x - r, -halfSize.y + r), float2(halfSize.x, halfSize.y - r));
+    if (r == 0.0f) {
+        return area;
+    }
+    for (int side = -1; side <= 1; side += 2) {
+        for (int end = -1; end <= 1; end += 2) {
+            float2 a = float2(side < 0 ? -halfSize.x : halfSize.x - r, end < 0 ? -halfSize.y : halfSize.y - r);
+            float2 low = max(lo, a), high = min(hi, a + r);
+            if (high.x <= low.x || high.y <= low.y) {
+                continue;
+            }
+            CoveragePolygon quarter;
+            quarter.count = 4;
+            quarter.points[0] = low;
+            quarter.points[1] = float2(high.x, low.y);
+            quarter.points[2] = high;
+            quarter.points[3] = float2(low.x, high.y);
+            area += coverageDisk(quarter, float2(float(side) * (halfSize.x - r), float(end) * (halfSize.y - r)), r);
+        }
+    }
+    return area;
+}

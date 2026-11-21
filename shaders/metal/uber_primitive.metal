@@ -55,49 +55,51 @@ vertex VertexOut uberCoreVertex(uint vertexId [[vertex_id]], uint instanceId [[i
 
 ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives, device const float *payload,
                        device const TransformRecord *transforms, device const ClipRecord *clips,
-                       texture2d<float> gradients, array<texture2d<float>, 16> textures) {
+                       device const float4 *halftoneCells, texture2d<float> gradients,
+                       array<texture2d<float>, 24> textures) {
     FrameBuffers frame;
     frame.primitives = primitives;
     frame.payload = payload;
     frame.transforms = transforms;
     frame.clips = clips;
+    frame.halftoneCells = halftoneCells;
     PrimitiveDesc d = primitives[in.primitive];
-    uint slot = d.auxHandle == noTexture ? 0u : min(d.auxHandle, 15u);
-    uint noiseSlot = (d.kindFlags & kindMask) == kindHalftone ? as_type<uint>(payload[d.payloadOffset + 30]) : 0u;
-    return shadePrimitive(frame, d, gradients, textures[slot], textures[min(noiseSlot, 15u)], in.position.xy);
+    uint slot = d.auxHandle == noTexture ? 0u : min(d.auxHandle, 23u);
+    return shadePrimitive(frame, d, gradients, textures[slot], in.position.xy);
 }
 
 fragment float4 uberFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]],
                              device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
-                             device const ClipRecord *clips [[buffer(3)]], texture2d<float> gradients [[texture(0)]],
-                             array<texture2d<float>, 16> textures [[texture(1)]]) {
-    return shadeFragment(in, primitives, payload, transforms, clips, gradients, textures).color;
+                             device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
+                             texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]]) {
+    return shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, gradients, textures).color;
 }
 
 [[early_fragment_tests]] fragment float4 uberCountingFragment(VertexOut in [[stage_in]],
                                    device const PrimitiveDesc *primitives [[buffer(0)]],
                                    device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
                                    device const ClipRecord *clips [[buffer(3)]], device atomic_uint *counter [[buffer(6)]],
-                                   texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 16> textures [[texture(1)]]) {
+                                   device const float4 *halftoneCells [[buffer(7)]],
+                                   texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]]) {
     atomic_fetch_add_explicit(counter, 1u, memory_order_relaxed);
-    return shadeFragment(in, primitives, payload, transforms, clips, gradients, textures).color;
+    return shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, gradients, textures).color;
 }
 
 fragment float4 uberMultiplyFragment(VertexOut in [[stage_in]], float4 destination [[color(0)]],
                                      device const PrimitiveDesc *primitives [[buffer(0)]],
                                      device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
-                                     device const ClipRecord *clips [[buffer(3)]], texture2d<float> gradients [[texture(0)]],
-                                     array<texture2d<float>, 16> textures [[texture(1)]]) {
-    float4 source = shadeFragment(in, primitives, payload, transforms, clips, gradients, textures).color;
+                                     device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
+                                     texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]]) {
+    float4 source = shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, gradients, textures).color;
     float3 rgb = source.rgb * destination.rgb + (1.0f - destination.a) * source.rgb + (1.0f - source.a) * destination.rgb;
     return float4(rgb, source.a + destination.a * (1.0f - source.a));
 }
 
 fragment LcdOut uberLcdFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]],
                                 device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
-                                device const ClipRecord *clips [[buffer(3)]], texture2d<float> gradients [[texture(0)]],
-                                array<texture2d<float>, 16> textures [[texture(1)]]) {
-    ShadeOut shaded = shadeFragment(in, primitives, payload, transforms, clips, gradients, textures);
+                                device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
+                                texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]]) {
+    ShadeOut shaded = shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, gradients, textures);
     LcdOut out;
     out.color = shaded.color;
     out.coverage = float4(shaded.coverage, shaded.color.a);

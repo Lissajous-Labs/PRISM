@@ -4,6 +4,7 @@
 
 #include "backends/metal/MetalEffects.h"
 #include "backends/metal/MetalFormantCache.h"
+#include "backends/metal/MetalHalftoneCache.h"
 #include "backends/metal/MetalPathEngine.h"
 #include "backends/metal/MetalState.h"
 #include "render/RenderSurface.h"
@@ -43,6 +44,7 @@ struct MetalSurfaceState {
     MetalPathEngine paths;
     MetalEffects effects;
     MetalFormantCache formants;
+    MetalHalftoneCache halftones;
     id<MTLTexture> output = nil;
     bool bloomActive = false;
     std::vector<std::uint32_t> indexScratch;

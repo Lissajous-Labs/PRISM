@@ -38,7 +38,7 @@ void MetalFormantCache::prepare(MetalDeviceState &device, const render::FrameVie
         }
         entry.primitive = static_cast<std::uint32_t>(i);
         gpuPrimitives[i].params[1] = 1;
-        gpuPrimitives[i].auxHandle = static_cast<std::uint32_t>(8 + count_);
+        gpuPrimitives[i].auxHandle = static_cast<std::uint32_t>(textureSlots + count_);
         ++count_;
     }
 }

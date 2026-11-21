@@ -18,8 +18,6 @@ struct MetalPathBuffers {
     id<MTLBuffer> backdrops = nil;
     id<MTLBuffer> cursors = nil;
     id<MTLBuffer> pieces = nil;
-    id<MTLBuffer> status = nil;
-    id<MTLBuffer> ticket = nil;
 };
 
 struct PathFineTargets {

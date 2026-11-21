@@ -74,6 +74,7 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
         }
     }
     formants.prepare(*device, view, primitives, extent);
+    halftones.prepare(*device, view, primitives, payload);
 }
 
 void MetalSurfaceState::bindUber(id<MTLRenderCommandEncoder> encoder,
@@ -88,6 +89,7 @@ void MetalSurfaceState::bindUber(id<MTLRenderCommandEncoder> encoder,
     [encoder setFragmentBuffer:transforms offset:0 atIndex:2];
     [encoder setFragmentBuffer:clips offset:0 atIndex:3];
     [encoder setFragmentBuffer:counter offset:0 atIndex:6];
+    [encoder setFragmentBuffer:halftones.cells() offset:0 atIndex:7];
     [encoder setFragmentTexture:(gradients ? gradients : device->emptyTexture) atIndex:0];
     for (std::size_t slot = 0; slot < textureSlots; ++slot) {
         [encoder setVertexTexture:(textures[slot] ? textures[slot] : device->emptyTexture)
@@ -95,10 +97,12 @@ void MetalSurfaceState::bindUber(id<MTLRenderCommandEncoder> encoder,
         [encoder setFragmentTexture:(textures[slot] ? textures[slot] : device->emptyTexture)
                             atIndex:slot + 1];
     }
-    for (std::size_t slot = 0; slot < textureSlots; ++slot) {
+    for (std::size_t slot = 0; slot < formantSlots; ++slot) {
         const auto texture = formants.texture(slot);
-        [encoder setFragmentTexture:(texture ? texture : device->emptyTexture) atIndex:9 + slot];
-        [encoder setVertexTexture:(texture ? texture : device->emptyTexture) atIndex:9 + slot];
+        [encoder setFragmentTexture:(texture ? texture : device->emptyTexture)
+                            atIndex:textureSlots + 1 + slot];
+        [encoder setVertexTexture:(texture ? texture : device->emptyTexture)
+                          atIndex:textureSlots + 1 + slot];
     }
 }
 
@@ -168,6 +172,7 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
         0,
         {0, 0}};
     formants.encode(*device, commands, primitives, payload, transforms);
+    halftones.encode(*device, commands, primitives, payload, gradients, textures);
     paths.prepare(*device, commands, request.view, extent);
     MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
     pass.colorAttachments[0].texture = color;

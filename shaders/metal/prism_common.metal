@@ -43,6 +43,7 @@ struct FrameBuffers {
     device const float *payload;
     device const TransformRecord *transforms;
     device const ClipRecord *clips;
+    device const float4 *halftoneCells;
 };
 
 constant uint kindMask = 0xFFu;

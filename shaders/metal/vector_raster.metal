@@ -2,9 +2,6 @@ constant float pathTile = 16.0f;
 constant float pieceScale = 65535.0f / 16.0f;
 constant float windingScale = 1048576.0f;
 constant uint scanPartition = 256;
-constant uint flagAggregate = 1u << 30;
-constant uint flagPrefix = 2u << 30;
-constant uint valueMask = (1u << 30) - 1u;
 
 struct PathUniforms {
     uint columns;
@@ -152,51 +149,27 @@ kernel void pathBinCount(device const float4 *segments [[buffer(0)]], constant P
 }
 
 kernel void pathScan(device const uint *counts [[buffer(0)]], device uint *offsets [[buffer(1)]],
-                     device atomic_uint *status [[buffer(2)]], device atomic_uint *ticket [[buffer(3)]],
-                     constant PathUniforms &u [[buffer(4)]], uint local [[thread_position_in_threadgroup]]) {
-    threadgroup uint partitionIndex;
+                     constant PathUniforms &u [[buffer(2)]], uint local [[thread_position_in_threadgroup]]) {
     threadgroup uint values[scanPartition];
-    threadgroup uint exclusivePrefix;
+    uint carry = 0;
     if (local == 0) {
-        partitionIndex = atomic_fetch_add_explicit(ticket, 1u, memory_order_relaxed);
-        exclusivePrefix = 0;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    uint partition = partitionIndex;
-    uint index = partition * scanPartition + local;
-    values[local] = index < u.tileCount ? counts[index] : 0u;
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint stride = 1; stride < scanPartition; stride <<= 1) {
-        uint addend = local >= stride ? values[local - stride] : 0u;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        values[local] += addend;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
-    if (local == 0) {
-        uint aggregate = values[scanPartition - 1];
-        atomic_store_explicit(&status[partition], flagAggregate | aggregate, memory_order_relaxed);
-        uint prefix = 0;
-        int look = int(partition) - 1;
-        while (look >= 0) {
-            uint state = atomic_load_explicit(&status[look], memory_order_relaxed);
-            if ((state & ~valueMask) == 0u) {
-                continue;
-            }
-            prefix += state & valueMask;
-            if ((state & ~valueMask) == flagPrefix) {
-                break;
-            }
-            --look;
-        }
-        atomic_store_explicit(&status[partition], flagPrefix | (prefix + aggregate), memory_order_relaxed);
-        exclusivePrefix = prefix;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (index < u.tileCount) {
-        offsets[index + 1] = exclusivePrefix + values[local];
-    }
-    if (index == 0) {
         offsets[0] = 0;
+    }
+    for (uint base = 0; base < u.tileCount; base += scanPartition) {
+        uint index = base + local;
+        values[local] = index < u.tileCount ? counts[index] : 0u;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        for (uint stride = 1; stride < scanPartition; stride <<= 1) {
+            uint addend = local >= stride ? values[local - stride] : 0u;
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            values[local] += addend;
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+        }
+        if (index < u.tileCount) {
+            offsets[index + 1] = carry + values[local];
+        }
+        carry += values[scanPartition - 1];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 }
 

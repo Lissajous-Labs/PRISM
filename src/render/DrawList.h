@@ -1,0 +1,78 @@
+#pragma once
+
+#include "hal/HalTypes.h"
+#include "math/Affine2D.h"
+#include "math/SdfCurves.h"
+#include "math/SdfShapes.h"
+#include "render/FrameRecords.h"
+#include "render/PrimitiveDesc.h"
+
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <vector>
+
+namespace prism::render {
+struct RectF {
+    float x0;
+    float y0;
+    float x1;
+    float y1;
+};
+
+struct BorderStyle {
+    math::BorderWidths widths;
+    std::uint32_t color;
+};
+
+class DrawList {
+  public:
+    DrawList();
+
+    void clear();
+    [[nodiscard]] std::optional<std::uint16_t> addTransform(const math::Affine2D &localToPhysical);
+    [[nodiscard]] std::uint16_t addClip(ClipKind kind, RectF bounds, math::CornerRadii radii = {});
+    void setTransform(std::uint16_t id) noexcept { transform_ = id; }
+    void setClip(std::uint16_t id) noexcept { clip_ = id; }
+    void setBlend(hal::BlendMode mode) noexcept { blend_ = mode; }
+    void setGradient(std::uint32_t row, math::Vector2 start, math::Vector2 end) noexcept;
+    void clearGradient() noexcept { gradientRow_ = noTexture; }
+
+    void roundedRect(RectF rect, math::CornerRadii radii, std::uint32_t color,
+                     std::optional<BorderStyle> border = std::nullopt);
+    void squircle(RectF rect, float power, std::uint32_t color);
+    void arc(math::Vector2 center, float radius, float thickness, float midAngle,
+             float halfAperture, math::ArcCap cap, std::uint32_t color);
+    void capsule(math::Vector2 a, math::Vector2 b, float radius, std::uint32_t color);
+    void quadBezier(math::Vector2 p0, math::Vector2 p1, math::Vector2 p2, float halfWidth,
+                    std::uint32_t color);
+    void triangle(math::Vector2 a, math::Vector2 b, math::Vector2 c, float radius,
+                  std::uint32_t color);
+    void boxShadow(RectF box, float radius, float sigma, std::uint32_t color, bool inset = false);
+    void texturedQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint32_t texture,
+                      std::uint32_t color, float pixelRange = 0);
+    void plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
+                   std::uint32_t color);
+
+    [[nodiscard]] std::span<const PrimitiveDesc> primitives() const noexcept { return primitives_; }
+    [[nodiscard]] std::span<const float> payload() const noexcept { return payload_; }
+    [[nodiscard]] std::span<const TransformRecord> transforms() const noexcept {
+        return transforms_;
+    }
+    [[nodiscard]] std::span<const ClipRecord> clips() const noexcept { return clips_; }
+
+  private:
+    std::vector<PrimitiveDesc> primitives_;
+    std::vector<float> payload_;
+    std::vector<TransformRecord> transforms_;
+    std::vector<ClipRecord> clips_;
+    std::uint16_t transform_ = identityTransform;
+    std::uint16_t clip_ = noClip;
+    hal::BlendMode blend_ = hal::BlendMode::sourceOver;
+    std::uint32_t gradientRow_ = noTexture;
+    float gradientGeometry_[4]{};
+
+    PrimitiveDesc &emit(PrimitiveKind kind, RectF bounds, std::uint32_t color);
+    std::uint32_t appendPayload(std::initializer_list<float> values);
+};
+}

@@ -26,7 +26,7 @@ namespace prism::render::detail {
 template <class Field>
 [[nodiscard]] double fieldCoverage(const TransformRecord &transform, math::Vector2 local,
                                    Field &&field) noexcept {
-    constexpr double step = 1e-3;
+    constexpr double step = 1.0 / 64;
     const double distance = field(local);
     const math::Vector2 localGradient{
         (field(local + math::Vector2{step, 0}) - field(local - math::Vector2{step, 0})) /

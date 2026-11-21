@@ -29,6 +29,15 @@ struct MetalDeviceState {
     id<MTLComputePipelineState> pathBackdrop = nil;
     id<MTLComputePipelineState> pathScatter = nil;
     id<MTLComputePipelineState> pathFine = nil;
+    id<MTLComputePipelineState> blurPaired = nil;
+    id<MTLComputePipelineState> blurShared = nil;
+    id<MTLComputePipelineState> kawaseDown = nil;
+    id<MTLComputePipelineState> kawaseUp = nil;
+    id<MTLComputePipelineState> mixTextures = nil;
+    id<MTLComputePipelineState> effectComposite = nil;
+    id<MTLComputePipelineState> bloomPrefilter = nil;
+    id<MTLComputePipelineState> bloomComposite = nil;
+    id<MTLComputePipelineState> shadowProbe = nil;
     id<MTLTexture> emptyTexture = nil;
     bool programmableBlending = false;
 };

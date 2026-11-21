@@ -2,6 +2,7 @@
 
 #import <Metal/Metal.h>
 
+#include "backends/metal/MetalEffects.h"
 #include "backends/metal/MetalPathEngine.h"
 #include "backends/metal/MetalState.h"
 #include "render/RenderSurface.h"
@@ -38,6 +39,9 @@ struct MetalSurfaceState {
     std::array<id<MTLTexture>, textureSlots> textures{};
     render::UberBatches batches;
     MetalPathEngine paths;
+    MetalEffects effects;
+    id<MTLTexture> output = nil;
+    bool bloomActive = false;
     std::vector<std::uint32_t> indexScratch;
     std::vector<float> texelScratch;
     bool lost = false;
@@ -48,6 +52,9 @@ struct MetalSurfaceState {
     void createTargets();
     void releaseTargets();
     void uploadFrame(const render::FrameView &view);
+    [[nodiscard]] id<MTLTexture> presentedTexture() const noexcept {
+        return bloomActive ? output : color;
+    }
     void encodeFrame(id<MTLCommandBuffer> commands, const render::FrameRequest &request);
 
   private:

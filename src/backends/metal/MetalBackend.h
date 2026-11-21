@@ -8,6 +8,14 @@
 
 namespace prism::backends {
 struct MetalDeviceState;
+
+struct ShadowQuery {
+    float point[2];
+    float half[2];
+    float radius;
+    float sigma;
+    float reserved[2];
+};
 struct MetalSurfaceState;
 
 class MetalSurface final : public render::RenderSurface {
@@ -44,6 +52,8 @@ class MetalDevice final : public render::RenderDevice {
     [[nodiscard]] std::unique_ptr<render::RenderSurface>
     createRenderSurface(const hal::SurfaceDesc &desc) override;
     [[nodiscard]] bool reflectLayout(std::span<std::uint32_t, 16> output) const;
+    [[nodiscard]] bool evaluateShadows(std::span<const ShadowQuery> queries,
+                                       std::span<float> results) const;
 
     static std::unique_ptr<hal::BackendDevice> create();
 

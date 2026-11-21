@@ -75,7 +75,7 @@ bool MetalSurface::readback(std::span<float> rgba) {
         upload(state_->device->device, state_->readback, nullptr, rowBytes * state_->extent.height);
         id<MTLCommandBuffer> commands = [state_->queue commandBuffer];
         id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
-        [blit copyFromTexture:state_->color
+        [blit copyFromTexture:state_->presentedTexture()
                          sourceSlice:0
                          sourceLevel:0
                         sourceOrigin:MTLOriginMake(0, 0, 0)
@@ -106,7 +106,7 @@ bool MetalSurface::readbackPresented(std::span<std::uint8_t> rgba, std::uint32_t
         id<MTLCommandBuffer> commands = [state_->queue commandBuffer];
         id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
         [encoder setComputePipelineState:state_->device->present];
-        [encoder setTexture:state_->color atIndex:0];
+        [encoder setTexture:state_->presentedTexture() atIndex:0];
         [encoder setBuffer:state_->readback offset:0 atIndex:0];
         [encoder setBytes:&frame length:sizeof(frame) atIndex:1];
         [encoder dispatchThreads:MTLSizeMake(state_->extent.width, state_->extent.height, 1)

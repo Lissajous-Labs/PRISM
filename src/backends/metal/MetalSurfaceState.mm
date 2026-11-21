@@ -37,7 +37,7 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
     upload(gpu, payload, view.payload.data(), view.payload.size_bytes());
     upload(gpu, transforms, view.transforms.data(), view.transforms.size_bytes());
     upload(gpu, clips, view.clips.data(), view.clips.size_bytes());
-    batches.build(view.primitives, earlyDepth);
+    batches.build(view.primitives, earlyDepth && view.effects.empty());
     indexScratch.assign(batches.opaqueIndices().begin(), batches.opaqueIndices().end());
     indexScratch.insert(indexScratch.end(), batches.ordered().begin(), batches.ordered().end());
     upload(gpu, indices, indexScratch.data(), indexScratch.size() * sizeof(std::uint32_t));
@@ -140,12 +140,8 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
     const hal::Rect viewport{0, 0, static_cast<std::int32_t>(extent.width),
                              static_cast<std::int32_t>(extent.height)};
     const PathFineTargets targets{color, depth, transforms, clips, primitiveCount};
-    request.damage->forEachRect([&](hal::Rect rect) {
-        const hal::Rect clipped{std::max(rect.x0, viewport.x0), std::max(rect.y0, viewport.y0),
-                                std::min(rect.x1, viewport.x1), std::min(rect.y1, viewport.y1)};
-        if (clipped.empty()) {
-            return;
-        }
+    const auto &view = request.view;
+    const auto encodeRect = [&](hal::Rect clipped) {
         id<MTLRenderCommandEncoder> encoder = beginRect(commands, pass, clipped, uniforms);
         [encoder setRenderPipelineState:device->clear];
         [encoder setDepthStencilState:device->depthReset];
@@ -163,16 +159,52 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
                        baseInstance:0];
         }
         std::uint32_t cursor = 0;
-        for (std::size_t path = 0; path < request.view.paths.size(); ++path) {
-            const std::uint32_t insertAfter = request.view.paths[path].insertAfter;
+        std::size_t path = 0;
+        std::size_t effect = 0;
+        while (path < view.paths.size() || effect < view.effects.size()) {
+            const bool pathNext =
+                effect == view.effects.size() ||
+                (path < view.paths.size() &&
+                 view.paths[path].insertAfter <= view.effects[effect].insertAfter);
+            const std::uint32_t insertAfter =
+                pathNext ? view.paths[path].insertAfter : view.effects[effect].insertAfter;
             drawOrdered(encoder, cursor, insertAfter);
             cursor = std::max(cursor, insertAfter);
             [encoder endEncoding];
-            paths.encodeFine(*device, commands, path, request.view, clipped, targets);
+            if (pathNext) {
+                paths.encodeFine(*device, commands, path++, view, clipped, targets);
+            } else {
+                effects.backdrop(*device, commands, color, view.effects[effect++], extent);
+            }
             encoder = beginRect(commands, pass, clipped, uniforms);
         }
         drawOrdered(encoder, cursor, primitiveCount);
         [encoder endEncoding];
-    });
+    };
+    if (!view.effects.empty()) {
+        encodeRect(viewport);
+    } else {
+        request.damage->forEachRect([&](hal::Rect rect) {
+            const hal::Rect clipped{std::max(rect.x0, viewport.x0), std::max(rect.y0, viewport.y0),
+                                    std::min(rect.x1, viewport.x1), std::min(rect.y1, viewport.y1)};
+            if (!clipped.empty()) {
+                encodeRect(clipped);
+            }
+        });
+    }
+    bloomActive = request.bloom != nullptr;
+    if (bloomActive) {
+        if (output == nil || output.width != extent.width || output.height != extent.height) {
+            MTLTextureDescriptor *descriptor =
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA16Float
+                                                                   width:extent.width
+                                                                  height:extent.height
+                                                               mipmapped:NO];
+            descriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+            descriptor.storageMode = MTLStorageModePrivate;
+            output = [device->device newTextureWithDescriptor:descriptor];
+        }
+        effects.bloom(*device, commands, color, output, *request.bloom);
+    }
 }
 }

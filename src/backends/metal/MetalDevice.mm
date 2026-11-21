@@ -137,6 +137,15 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
     state->pathBackdrop = compute("pathBackdrop");
     state->pathScatter = compute("pathScatter");
     state->pathFine = compute("pathFine");
+    state->blurPaired = compute("blurPairedPass");
+    state->blurShared = compute("blurSharedPass");
+    state->kawaseDown = compute("kawaseDownPass");
+    state->kawaseUp = compute("kawaseUpPass");
+    state->mixTextures = compute("mixPass");
+    state->effectComposite = compute("effectCompositePass");
+    state->bloomPrefilter = compute("bloomPrefilterPass");
+    state->bloomComposite = compute("bloomCompositePass");
+    state->shadowProbe = compute("shadowProbe");
     MTLTextureDescriptor *empty =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
                                                            width:1
@@ -205,6 +214,35 @@ bool MetalDevice::reflectLayout(std::span<std::uint32_t, 16> output) const {
         [commands commit];
         [commands waitUntilCompleted];
         std::memcpy(output.data(), result.contents, 16 * sizeof(std::uint32_t));
+        return commands.status == MTLCommandBufferStatusCompleted;
+    }
+}
+
+bool MetalDevice::evaluateShadows(std::span<const ShadowQuery> queries,
+                                  std::span<float> results) const {
+    if (queries.size() != results.size() || queries.empty()) {
+        return false;
+    }
+    @autoreleasepool {
+        id<MTLBuffer> input = [state_->device newBufferWithBytes:queries.data()
+                                                          length:queries.size_bytes()
+                                                         options:MTLResourceStorageModeShared];
+        id<MTLBuffer> output = [state_->device newBufferWithLength:results.size_bytes()
+                                                           options:MTLResourceStorageModeShared];
+        const auto count = static_cast<std::uint32_t>(queries.size());
+        id<MTLCommandQueue> queue = [state_->device newCommandQueue];
+        id<MTLCommandBuffer> commands = [queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+        [encoder setComputePipelineState:state_->shadowProbe];
+        [encoder setBuffer:input offset:0 atIndex:0];
+        [encoder setBuffer:output offset:0 atIndex:1];
+        [encoder setBytes:&count length:sizeof(count) atIndex:2];
+        [encoder dispatchThreads:MTLSizeMake(count, 1, 1)
+            threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+        [encoder endEncoding];
+        [commands commit];
+        [commands waitUntilCompleted];
+        std::memcpy(results.data(), output.contents, results.size_bytes());
         return commands.status == MTLCommandBufferStatusCompleted;
     }
 }

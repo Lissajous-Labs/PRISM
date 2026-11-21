@@ -1,0 +1,34 @@
+find_package(Threads REQUIRED)
+
+add_library(prism_alloc_guard STATIC support/AllocGuard.cpp)
+target_link_libraries(prism_alloc_guard PUBLIC prism_options)
+
+add_library(prism_pixel_oracle STATIC support/PixelOracle.cpp)
+target_link_libraries(prism_pixel_oracle PUBLIC prism_options)
+
+add_library(prism_coverage_oracle STATIC support/CoverageOracle.cpp)
+target_link_libraries(prism_coverage_oracle PUBLIC prism_options)
+
+function(prism_test name source)
+    add_executable(prism_${name}_tests ${source})
+    target_link_libraries(prism_${name}_tests PRIVATE prism_alloc_guard ${ARGN})
+    add_test(NAME ${name} COMMAND prism_${name}_tests)
+endfunction()
+
+prism_test(foundation unit/FoundationTests.cpp)
+prism_test(allocations unit/AllocationTests.cpp Threads::Threads)
+prism_test(pixel_oracle unit/PixelOracleTests.cpp prism_pixel_oracle)
+prism_test(coverage_oracle unit/CoverageOracleTests.cpp prism_coverage_oracle)
+prism_test(simd unit/SimdVecTests.cpp prism_math)
+prism_test(trigonometry unit/TrigPolyTests.cpp prism_math)
+prism_test(hashing unit/Hash64Tests.cpp prism_math)
+prism_test(bitset unit/Bitset64Tests.cpp prism_math)
+prism_test(color unit/ColorMathTests.cpp prism_math)
+prism_test(geometry unit/GeometrySnapTests.cpp prism_math)
+
+add_test(NAME no_comments COMMAND prism_check_comments "${PROJECT_SOURCE_DIR}")
+add_test(NAME comment_scanner COMMAND prism_check_comments --self-test)
+if(UNIX)
+    add_test(NAME commit_messages
+        COMMAND sh "${PROJECT_SOURCE_DIR}/tools/lint/CheckCommitMsg.sh" --self-test)
+endif()

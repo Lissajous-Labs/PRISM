@@ -18,23 +18,50 @@ float formantHeightGpu(device const float *h, float dbRange, float x) {
     float normalized = clamp((db - h[7]) / dbRange, 0.0f, 1.0f);
     return h[1] + (h[3] - h[1]) * (1.0f - normalized);
 }
+float2 formantSpanGpu(device const float *h, float dbRange, float x, float width, float height) {
+    float samples[9];
+    uint highest = 0u, lowest = 0u;
+    for (uint j = 0; j <= 8u; ++j) {
+        samples[j] = formantHeightGpu(h, dbRange, x + width * (float(j) / 8.0f - 0.5f));
+        highest = samples[j] < samples[highest] ? j : highest;
+        lowest = samples[j] > samples[lowest] ? j : lowest;
+    }
+    float2 span = float2(height);
+    if (highest != 0u && highest != 8u) {
+        float curvature = samples[highest - 1u] - 2.0f * samples[highest] + samples[highest + 1u];
+        float difference = samples[highest - 1u] - samples[highest + 1u];
+        span.x = min(height, curvature != 0.0f ? samples[highest] - difference * difference / (8.0f * curvature) : samples[highest]);
+    }
+    if (lowest != 0u && lowest != 8u) {
+        float curvature = samples[lowest - 1u] - 2.0f * samples[lowest] + samples[lowest + 1u];
+        float difference = samples[lowest - 1u] - samples[lowest + 1u];
+        span.y = max(height, curvature != 0.0f ? samples[lowest] - difference * difference / (8.0f * curvature) : samples[lowest]);
+    }
+    return span;
+}
 float4 shadeFormantGpu(PrimitiveDesc d, device const float *payload, TransformRecord t, float2 local,
                        texture2d<float> columns, float2 physicalPixel) {
     device const float *h = payload + d.payloadOffset;
     float height, slope;
+    float2 span;
     if (d.params[1] > 0.0f) {
-        float2 column = columns.read(uint2(min(uint(physicalPixel.x), columns.get_width() - 1u), 0)).rg;
-        height = column.x; slope = column.y;
+        float4 column = columns.read(uint2(min(uint(physicalPixel.x), columns.get_width() - 1u), 0));
+        height = column.x; slope = column.y; span = column.zw;
     } else {
         height = formantHeightGpu(h, d.params[0], local.x);
         slope = formantHeightGpu(h, d.params[0], local.x + 0.5f) - formantHeightGpu(h, d.params[0], local.x - 0.5f);
+        span = formantSpanGpu(h, d.params[0], local.x, abs(t.inverse[0]), height);
     }
     float inverse = 1.0f / length(float2(slope, 1.0f));
     float2 normal = float2(-slope, 1.0f) * inverse;
     float2 physical = float2(t.inverse[0] * normal.x + t.inverse[1] * normal.y,
                              t.inverse[2] * normal.x + t.inverse[3] * normal.y);
     float perpendicular = abs(local.y - height) * inverse;
-    float core = boxCoverage((perpendicular - h[8] * 0.5f) / length(physical), physical);
+    float2 verticalNormal = float2(t.inverse[1], t.inverse[3]);
+    float verticalNorm = length(verticalNormal);
+    float spanDistance = max(span.x - local.y, local.y - span.y);
+    float core = max(boxCoverage((perpendicular - h[8] * 0.5f) / length(physical), physical),
+                     verticalNorm > 1e-12f ? boxCoverage((spanDistance - h[8] * 0.5f) / verticalNorm, verticalNormal) : 0.0f);
     float under = local.y > height
                       ? h[11] * (h[14] > 0.0f ? exp(-h[14] * (local.y - height) / (h[3] - h[1])) : 1.0f)
                       : 0.0f;
@@ -68,5 +95,5 @@ kernel void formantColumns(device const PrimitiveDesc *primitives [[buffer(0)]],
     if (x < h[0] || x > h[2]) { columns.write(float4(0.0f), uint2(column, 0)); return; }
     float height = formantHeightGpu(h, d.params[0], x);
     float slope = formantHeightGpu(h, d.params[0], x + 0.5f) - formantHeightGpu(h, d.params[0], x - 0.5f);
-    columns.write(float4(height, slope, 0.0f, 1.0f), uint2(column, 0));
+    columns.write(float4(height, slope, formantSpanGpu(h, d.params[0], x, abs(t.inverse[0]), height)), uint2(column, 0));
 }

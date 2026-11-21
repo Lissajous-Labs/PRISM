@@ -15,7 +15,10 @@ struct CurveSample {
     double inverseSlopeNorm;
     math::Vector2 physicalNormal;
     double physicalNorm;
+    double top;
+    double bottom;
 };
+constexpr int spanSteps = 8;
 CurveSample curveSample(const FormantPayload &h, double dbRange, const TransformRecord &t,
                         double x) noexcept {
     const double height = formantHeight(h, dbRange, x);
@@ -24,7 +27,26 @@ CurveSample curveSample(const FormantPayload &h, double dbRange, const Transform
     const double nx = -slope * inverse, ny = inverse;
     const math::Vector2 normal{t.inverse[0] * nx + t.inverse[1] * ny,
                                t.inverse[2] * nx + t.inverse[3] * ny};
-    return {height, inverse, normal, std::hypot(normal.x, normal.y)};
+    const double width = std::abs(t.inverse[0]);
+    double samples[spanSteps + 1];
+    int highest = 0, lowest = 0;
+    for (int j = 0; j <= spanSteps; ++j) {
+        samples[j] =
+            formantHeight(h, dbRange, x + width * (static_cast<double>(j) / spanSteps - 0.5));
+        highest = samples[j] < samples[highest] ? j : highest;
+        lowest = samples[j] > samples[lowest] ? j : lowest;
+    }
+    const auto extremum = [&](int j) {
+        if (j == 0 || j == spanSteps) {
+            return height;
+        }
+        const double curvature = samples[j - 1] - 2 * samples[j] + samples[j + 1];
+        const double difference = samples[j - 1] - samples[j + 1];
+        return curvature != 0 ? samples[j] - difference * difference / (8 * curvature) : samples[j];
+    };
+    const double top = std::min(height, extremum(highest));
+    const double bottom = std::max(height, extremum(lowest));
+    return {height, inverse, normal, std::hypot(normal.x, normal.y), top, bottom};
 }
 math::PremultipliedColor curveColor(const FormantPayload &h, double dbRange,
                                     const TransformRecord &t, const CurveSample &s,
@@ -33,14 +55,19 @@ math::PremultipliedColor curveColor(const FormantPayload &h, double dbRange,
         return {};
     }
     const double perpendicular = std::abs(local.y - s.height) * s.inverseSlopeNorm;
-    const double core =
-        math::boxCoverage((perpendicular - h.style[0] * 0.5) / s.physicalNorm, s.physicalNormal);
+    const math::Vector2 verticalNormal{t.inverse[1], t.inverse[3]};
+    const double verticalNorm = std::hypot(verticalNormal.x, verticalNormal.y);
+    const double span = std::max(s.top - local.y, local.y - s.bottom);
+    const double core = std::max(
+        math::boxCoverage((perpendicular - h.style[0] * 0.5) / s.physicalNorm, s.physicalNormal),
+        verticalNorm > 1e-12
+            ? math::boxCoverage((span - h.style[0] * 0.5) / verticalNorm, verticalNormal)
+            : 0.0);
     const double under =
         local.y > s.height
-            ? h.style[3] *
-                  (h.fillDecay > 0
-                       ? std::exp(-h.fillDecay * (local.y - s.height) / (h.rect[3] - h.rect[1]))
-                       : 1.0)
+            ? h.style[3] * (h.fillDecay > 0 ? std::exp(-h.fillDecay * (local.y - s.height) /
+                                                       (h.rect[3] - h.rect[1]))
+                                            : 1.0)
             : 0;
     double refLine = 0;
     if (h.zeroLineAlpha > 0) {
@@ -113,10 +140,9 @@ void rasterFormantCurve(const FrameView &frame, const PrimitiveDesc &desc, Float
         for (std::uint32_t y = 0; y < height; ++y) {
             const double py = y + 0.5;
             const auto local = detail::toLocal(t, px, py);
-            const auto value =
-                curveColor(h, desc.params[0], t,
-                           aligned ? sample : curveSample(h, desc.params[0], t, local.x), color,
-                           local);
+            const auto value = curveColor(
+                h, desc.params[0], t, aligned ? sample : curveSample(h, desc.params[0], t, local.x),
+                color, local);
             const double clip = clipCoverage(frame, desc.clipId, px, py);
             image.at(x,
                      y) = {static_cast<float>(value.r * clip), static_cast<float>(value.g * clip),

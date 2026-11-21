@@ -19,7 +19,7 @@ void MetalFormantCache::prepare(MetalDeviceState &device, const render::FrameVie
         auto &entry = entries_[count_];
         if (entry.texture == nil || entry.texture.width != extent.width) {
             auto *desc =
-                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRG32Float
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
                                                                    width:extent.width
                                                                   height:1
                                                                mipmapped:NO];

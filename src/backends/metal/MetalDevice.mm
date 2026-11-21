@@ -128,6 +128,15 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
     state->present =
         [state->device newComputePipelineStateWithFunction:function(state->library, "presentDither")
                                                      error:&error];
+    const auto compute = [&](const char *name) {
+        return [state->device newComputePipelineStateWithFunction:function(state->library, name)
+                                                            error:nil];
+    };
+    state->pathBinCount = compute("pathBinCount");
+    state->pathScan = compute("pathScan");
+    state->pathBackdrop = compute("pathBackdrop");
+    state->pathScatter = compute("pathScatter");
+    state->pathFine = compute("pathFine");
     MTLTextureDescriptor *empty =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
                                                            width:1

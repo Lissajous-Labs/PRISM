@@ -21,6 +21,7 @@ set(PRISM_METAL_SHADERS
     "${PROJECT_SOURCE_DIR}/shaders/metal/prism_shading.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/uber_primitive.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/present.metal"
+    "${PROJECT_SOURCE_DIR}/shaders/metal/vector_raster.metal"
 )
 string(REPLACE ";" "|" PRISM_SHADER_ARGUMENT "${PRISM_METAL_SHADERS}")
 set(PRISM_SHADER_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/ShaderSources.cpp")
@@ -53,7 +54,9 @@ target_link_libraries(prism_backend_cpu PUBLIC prism_render)
 if(APPLE)
     add_library(prism_backend_metal STATIC
         backends/metal/MetalDevice.mm
+        backends/metal/MetalPathEngine.mm
         backends/metal/MetalSurface.mm
+        backends/metal/MetalSurfaceState.mm
     )
     target_link_libraries(prism_backend_metal PUBLIC prism_render "-framework Metal" "-framework Foundation")
     target_compile_options(prism_backend_metal PRIVATE -fobjc-arc)

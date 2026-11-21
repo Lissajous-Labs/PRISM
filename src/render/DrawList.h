@@ -65,7 +65,8 @@ class DrawList {
     void strokePath(const VectorPath &path, const StrokeStyle &style, std::uint32_t color);
     void backdropBlur(RectF rect, math::CornerRadii radii, float sigma);
     void plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
-                   std::uint32_t color, float scrollColumns = 0, float edgeFade = 0);
+                   std::uint32_t color, float scrollColumns = 0, float edgeFade = 0,
+                   bool fillBelow = false);
     void halftoneField(const HalftonePayload &field, std::uint32_t texture);
     void wavetable3d(const Wavetable3dUniforms &uniforms, std::uint32_t texture,
                      std::uint32_t palette);

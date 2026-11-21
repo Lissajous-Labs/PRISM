@@ -270,14 +270,15 @@ void DrawList::texturedQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint3
 }
 
 void DrawList::plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
-                         std::uint32_t color, float scrollColumns, float edgeFade) {
+                         std::uint32_t color, float scrollColumns, float edgeFade, bool fillBelow) {
     PrimitiveDesc &desc = emit(PrimitiveKind::plotStrip, rect, color);
     desc.auxHandle = strip;
     desc.params[0] = thickness;
     desc.params[1] = static_cast<float>(columns);
     desc.params[2] = scrollColumns;
     desc.params[3] = edgeFade;
-    desc.payloadOffset = appendPayload({rect.x0, rect.y0, rect.x1, rect.y1});
+    desc.payloadOffset =
+        appendPayload({rect.x0, rect.y0, rect.x1, rect.y1, fillBelow ? 1.0f : 0.0f});
 }
 
 void DrawList::emitPath(std::uint32_t firstSegment, std::uint32_t color, FillRule rule) {

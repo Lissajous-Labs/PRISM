@@ -91,19 +91,8 @@ void GpuSpectrum::appendWaterfallRow(float minDb, float maxDb) {
 void GpuSpectrum::draw(render::DrawList &list, render::RectF rect, std::uint32_t stripSlot,
                        std::uint32_t gradientRow, std::uint32_t lineColor,
                        std::uint32_t fillColor) const {
-    const float width = rect.x1 - rect.x0;
-    const float height = rect.y1 - rect.y0;
     list.setLinearGradient(gradientRow, {rect.x0, rect.y0}, {rect.x0, rect.y1});
-    for (std::uint32_t column = 0; column < columns_; ++column) {
-        const float x0 =
-            rect.x0 + width * static_cast<float>(column) / static_cast<float>(columns_);
-        const float x1 =
-            rect.x0 + width * static_cast<float>(column + 1) / static_cast<float>(columns_);
-        const float top = rect.y1 - strip_[column * 2] * height;
-        if (top < rect.y1) {
-            list.roundedRect({x0, top, x1, rect.y1}, {}, fillColor);
-        }
-    }
+    list.plotStrip(rect, stripSlot, columns_, 0, fillColor, 0, 0, true);
     list.clearGradient();
     list.plotStrip(rect, stripSlot, columns_, 1.5f, lineColor);
 }

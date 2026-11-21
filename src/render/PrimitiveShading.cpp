@@ -181,8 +181,10 @@ ShadeResult shadePlot(const FrameView &frame, const PrimitiveDesc &desc,
             std::floor(std::min(u * columns, columns - 1) + desc.params[2]));
         const auto column = (raw % count + count) % count;
         const Texel band = fetchTexel(strip, column, 0);
-        const double top = shape.center.y + shape.half.y - band[1] * 2 * shape.half.y;
-        const double bottom = shape.center.y + shape.half.y - band[0] * 2 * shape.half.y;
+        const double base = shape.center.y + shape.half.y;
+        const bool fill = frame.payload[desc.payloadOffset + 4] > 0;
+        const double top = base - (fill ? band[0] : band[1]) * 2 * shape.half.y;
+        const double bottom = fill ? base : base - band[0] * 2 * shape.half.y;
         const double outside = std::max(top - p.y, p.y - bottom);
         return outside - halfThickness;
     };

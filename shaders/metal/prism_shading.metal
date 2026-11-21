@@ -39,8 +39,10 @@ float plotField(PrimitiveDesc d, device const float *payload, texture2d<float> s
     int raw = int(floor(min(u * columns, columns - 1.0f) + d.params[2]));
     uint column = uint((raw % count + count) % count);
     float4 band = strip.read(uint2(min(column, strip.get_width() - 1), 0));
-    float top = box.center.y + box.half_.y - band.y * 2.0f * box.half_.y;
-    float bottom = box.center.y + box.half_.y - band.x * 2.0f * box.half_.y;
+    float base = box.center.y + box.half_.y;
+    bool fill = payload[d.payloadOffset + 4] > 0.0f;
+    float top = base - (fill ? band.x : band.y) * 2.0f * box.half_.y;
+    float bottom = fill ? base : base - band.x * 2.0f * box.half_.y;
     return max(top - p.y, p.y - bottom) - d.params[0] * 0.5f;
 }
 

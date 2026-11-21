@@ -28,6 +28,7 @@ prism_test(geometry unit/GeometrySnapTests.cpp prism_math)
 prism_test(sdf_shapes unit/SdfShapeTests.cpp prism_math)
 prism_test(sdf_curves unit/SdfCurveTests.cpp prism_math)
 prism_test(coverage_shadow unit/CoverageShadowTests.cpp prism_math)
+prism_test(flatten_spring unit/FlattenSpringTests.cpp prism_math)
 
 add_test(NAME no_comments COMMAND prism_check_comments "${PROJECT_SOURCE_DIR}")
 add_test(NAME comment_scanner COMMAND prism_check_comments --self-test)

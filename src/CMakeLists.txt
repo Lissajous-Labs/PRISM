@@ -10,6 +10,7 @@ target_link_libraries(prism_math INTERFACE prism_core)
 
 add_library(prism_hal STATIC
     hal/DamageRegion.cpp
+    hal/DeviceRegistry.cpp
     hal/FrameGraph.cpp
 )
 target_link_libraries(prism_hal PUBLIC prism_math)

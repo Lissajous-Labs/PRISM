@@ -45,6 +45,7 @@ bool MetalSurface::lost() const noexcept { return state_->lost; }
 void MetalSurface::setEarlyDepth(bool enabled) noexcept { state_->earlyDepth = enabled; }
 void MetalSurface::setFragmentCounting(bool enabled) noexcept { state_->counting = enabled; }
 std::uint32_t MetalSurface::lastFragmentCount() const noexcept { return state_->fragments; }
+double MetalSurface::lastGpuMilliseconds() const noexcept { return state_->gpuMilliseconds; }
 
 bool MetalSurface::render(const render::FrameRequest &request) {
     if (state_->lost || request.damage == nullptr) {
@@ -58,6 +59,7 @@ bool MetalSurface::render(const render::FrameRequest &request) {
         [commands commit];
         [commands waitUntilCompleted];
         state_->fragments = *static_cast<const std::uint32_t *>(state_->counter.contents);
+        state_->gpuMilliseconds = (commands.GPUEndTime - commands.GPUStartTime) * 1000.0;
         if (commands.status != MTLCommandBufferStatusCompleted) {
             state_->lost = true;
             return false;

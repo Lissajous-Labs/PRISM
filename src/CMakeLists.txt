@@ -128,3 +128,12 @@ else()
     )
     target_link_libraries(prism_host PUBLIC prism_render prism_layout)
 endif()
+
+add_library(prism_widgets STATIC
+    telemetry/LoudnessMeter.cpp
+    widgets/GpuFilterCurve.cpp
+    widgets/GpuLoudnessMeter.cpp
+    widgets/GpuScope.cpp
+    widgets/GpuSpectrum.cpp
+)
+target_link_libraries(prism_widgets PUBLIC prism_render)

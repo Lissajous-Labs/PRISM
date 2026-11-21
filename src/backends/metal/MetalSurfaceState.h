@@ -48,6 +48,7 @@ struct MetalSurfaceState {
     bool earlyDepth = true;
     bool counting = false;
     std::uint32_t fragments = 0;
+    double gpuMilliseconds = 0;
 
     void createTargets();
     void releaseTargets();

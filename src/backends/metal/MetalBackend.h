@@ -38,6 +38,7 @@ class MetalSurface final : public render::RenderSurface {
     void setEarlyDepth(bool enabled) noexcept;
     void setFragmentCounting(bool enabled) noexcept;
     [[nodiscard]] std::uint32_t lastFragmentCount() const noexcept;
+    [[nodiscard]] double lastGpuMilliseconds() const noexcept;
 
   private:
     std::unique_ptr<MetalSurfaceState> state_;

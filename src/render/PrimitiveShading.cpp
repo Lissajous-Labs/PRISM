@@ -2,6 +2,7 @@
 
 #include "math/Sdf.h"
 #include "math/ShadowMath.h"
+#include "math/StemDarkening.h"
 #include "render/GradientParameter.h"
 #include "render/ShadingSupport.h"
 #include "render/TextureSampling.h"
@@ -124,12 +125,22 @@ ShadeResult shadeTexture(const FrameView &frame, const PrimitiveDesc &desc,
     const Texel texel = sampleBilinear(texture, uv.x, uv.y);
     const auto color = detail::decodeColor(desc.color);
     switch (desc.kind()) {
-    case PrimitiveKind::glyphAlpha:
-        return solid(detail::scale(color, texel[0]));
+    case PrimitiveKind::glyphAlpha: {
+        const float luminance =
+            math::foregroundLuminance(static_cast<float>(color.r), static_cast<float>(color.g),
+                                      static_cast<float>(color.b), static_cast<float>(color.a));
+        return solid(
+            detail::scale(color, math::stemDarkening(static_cast<float>(texel[0]), luminance)));
+    }
     case PrimitiveKind::glyphLcd: {
-        ShadeResult result{{color.r * texel[0], color.g * texel[1], color.b * texel[2],
-                            color.a * (texel[0] + texel[1] + texel[2]) / 3},
-                           {color.a * texel[0], color.a * texel[1], color.a * texel[2]},
+        const float luminance =
+            math::foregroundLuminance(static_cast<float>(color.r), static_cast<float>(color.g),
+                                      static_cast<float>(color.b), static_cast<float>(color.a));
+        const double r = math::stemDarkening(static_cast<float>(texel[0]), luminance);
+        const double g = math::stemDarkening(static_cast<float>(texel[1]), luminance);
+        const double b = math::stemDarkening(static_cast<float>(texel[2]), luminance);
+        ShadeResult result{{color.r * r, color.g * g, color.b * b, color.a * (r + g + b) / 3},
+                           {color.a * r, color.a * g, color.a * b},
                            true};
         return result;
     }

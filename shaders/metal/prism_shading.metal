@@ -186,6 +186,11 @@ float clipCoverage(FrameBuffers frame, ushort clipId, float2 physical) {
     return coverage;
 }
 
+float stemDarkening(float coverage, float luminance) {
+    float beta = 0.28f * (1.0f - 2.0f * pow(clamp(luminance, 0.0f, 1.0f), 1.0f / 2.2f));
+    return coverage * (1.0f + beta) / (1.0f + beta * coverage);
+}
+
 ShadeOut shadeTexture(PrimitiveDesc d, device const float *payload, TransformRecord t, texture2d<float> texture,
                       float2 local) {
     ShadeOut result;
@@ -199,11 +204,14 @@ ShadeOut shadeTexture(PrimitiveDesc d, device const float *payload, TransformRec
     float4 texel = sampleBilinear(texture, uv);
     float4 color = decodeColor(d.color);
     uint kind = d.kindFlags & kindMask;
+    float luminance = color.a > 0.0f ? dot(color.rgb, float3(0.2126f, 0.7152f, 0.0722f)) / color.a : 0.0f;
     if (kind == kindGlyphAlpha) {
-        result.color = color * texel.x;
+        result.color = color * stemDarkening(texel.x, luminance);
     } else if (kind == kindGlyphLcd) {
-        result.color = float4(color.rgb * texel.rgb, color.a * (texel.x + texel.y + texel.z) / 3.0f);
-        result.coverage = color.a * texel.rgb;
+        float3 k = float3(stemDarkening(texel.x, luminance), stemDarkening(texel.y, luminance),
+                          stemDarkening(texel.z, luminance));
+        result.color = float4(color.rgb * k, color.a * (k.x + k.y + k.z) / 3.0f);
+        result.coverage = color.a * k;
         result.subpixel = true;
     } else if (kind == kindGlyphMtsdf) {
         float median = max(min(texel.x, texel.y), min(max(texel.x, texel.y), texel.z));

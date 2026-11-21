@@ -35,7 +35,10 @@ class DrawList {
     void setTransform(std::uint16_t id) noexcept { transform_ = id; }
     void setClip(std::uint16_t id) noexcept { clip_ = id; }
     void setBlend(hal::BlendMode mode) noexcept { blend_ = mode; }
-    void setGradient(std::uint32_t row, math::Vector2 start, math::Vector2 end) noexcept;
+    void setLinearGradient(std::uint32_t row, math::Vector2 start, math::Vector2 end) noexcept;
+    void setRadialGradient(std::uint32_t row, math::Vector2 center, math::Vector2 focus,
+                           float radius) noexcept;
+    void setConicGradient(std::uint32_t row, math::Vector2 center, float startAngle) noexcept;
     void clearGradient() noexcept { gradientRow_ = noTexture; }
 
     void roundedRect(RectF rect, math::CornerRadii radii, std::uint32_t color,
@@ -70,7 +73,8 @@ class DrawList {
     std::uint16_t clip_ = noClip;
     hal::BlendMode blend_ = hal::BlendMode::sourceOver;
     std::uint32_t gradientRow_ = noTexture;
-    float gradientGeometry_[4]{};
+    GradientShape gradientShape_ = GradientShape::linear;
+    float gradientGeometry_[6]{};
 
     PrimitiveDesc &emit(PrimitiveKind kind, RectF bounds, std::uint32_t color);
     std::uint32_t appendPayload(std::initializer_list<float> values);

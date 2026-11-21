@@ -53,12 +53,39 @@ std::uint16_t DrawList::addClip(ClipKind kind, RectF bounds, math::CornerRadii r
     return static_cast<std::uint16_t>(clips_.size() - 1);
 }
 
-void DrawList::setGradient(std::uint32_t row, math::Vector2 start, math::Vector2 end) noexcept {
+void DrawList::setLinearGradient(std::uint32_t row, math::Vector2 start,
+                                 math::Vector2 end) noexcept {
     gradientRow_ = row;
-    gradientGeometry_[0] = static_cast<float>(start.x);
-    gradientGeometry_[1] = static_cast<float>(start.y);
-    gradientGeometry_[2] = static_cast<float>(end.x);
-    gradientGeometry_[3] = static_cast<float>(end.y);
+    gradientShape_ = GradientShape::linear;
+    const float geometry[6] = {static_cast<float>(start.x),
+                               static_cast<float>(start.y),
+                               static_cast<float>(end.x),
+                               static_cast<float>(end.y),
+                               0,
+                               0};
+    std::copy(std::begin(geometry), std::end(geometry), gradientGeometry_);
+}
+
+void DrawList::setRadialGradient(std::uint32_t row, math::Vector2 center, math::Vector2 focus,
+                                 float radius) noexcept {
+    gradientRow_ = row;
+    gradientShape_ = GradientShape::radial;
+    const float geometry[6] = {static_cast<float>(center.x),
+                               static_cast<float>(center.y),
+                               static_cast<float>(focus.x),
+                               static_cast<float>(focus.y),
+                               radius,
+                               0};
+    std::copy(std::begin(geometry), std::end(geometry), gradientGeometry_);
+}
+
+void DrawList::setConicGradient(std::uint32_t row, math::Vector2 center,
+                                float startAngle) noexcept {
+    gradientRow_ = row;
+    gradientShape_ = GradientShape::conic;
+    const float geometry[6] = {
+        static_cast<float>(center.x), static_cast<float>(center.y), startAngle, 0, 0, 0};
+    std::copy(std::begin(geometry), std::end(geometry), gradientGeometry_);
 }
 
 PrimitiveDesc &DrawList::emit(PrimitiveKind kind, RectF bounds, std::uint32_t color) {
@@ -76,10 +103,12 @@ PrimitiveDesc &DrawList::emit(PrimitiveKind kind, RectF bounds, std::uint32_t co
     desc.clipId = clip_;
     desc.auxHandle = noTexture;
     if (gradientRow_ != noTexture && kind <= PrimitiveKind::triangle) {
-        desc.kindFlags |= flags::gradient;
+        desc.kindFlags |= flags::gradient |
+                          (static_cast<std::uint32_t>(gradientShape_) << flags::gradientShapeShift);
         desc.auxHandle = gradientRow_;
-        desc.gradientOffset = appendPayload({gradientGeometry_[0], gradientGeometry_[1],
-                                             gradientGeometry_[2], gradientGeometry_[3]});
+        desc.gradientOffset =
+            appendPayload({gradientGeometry_[0], gradientGeometry_[1], gradientGeometry_[2],
+                           gradientGeometry_[3], gradientGeometry_[4], gradientGeometry_[5]});
     }
     return desc;
 }

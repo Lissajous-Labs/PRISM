@@ -22,6 +22,7 @@ enum class PrimitiveKind : std::uint8_t {
 };
 
 inline constexpr std::uint32_t primitiveKindCount = 12;
+enum class GradientShape : std::uint8_t { linear = 0, radial = 1, conic = 2 };
 
 namespace flags {
 inline constexpr std::uint32_t kindMask = 0xFFu;
@@ -33,6 +34,8 @@ inline constexpr std::uint32_t gradient = 1u << 13;
 inline constexpr std::uint32_t capShift = 14;
 inline constexpr std::uint32_t capMask = 0x3u << capShift;
 inline constexpr std::uint32_t inset = 1u << 16;
+inline constexpr std::uint32_t gradientShapeShift = 17;
+inline constexpr std::uint32_t gradientShapeMask = 0x3u << gradientShapeShift;
 }
 
 struct alignas(64) PrimitiveDesc {

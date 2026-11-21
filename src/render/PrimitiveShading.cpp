@@ -2,6 +2,7 @@
 
 #include "math/Sdf.h"
 #include "math/ShadowMath.h"
+#include "render/GradientParameter.h"
 #include "render/ShadingSupport.h"
 #include "render/TextureSampling.h"
 
@@ -36,13 +37,9 @@ math::PremultipliedColor fillColor(const FrameView &frame, const PrimitiveDesc &
     if (!desc.has(flags::gradient)) {
         return detail::decodeColor(desc.color);
     }
-    const Vector2 start = point(frame, desc.gradientOffset);
-    const Vector2 end = point(frame, desc.gradientOffset + 2);
-    const Vector2 axis = end - start;
-    const double lengthSquared = math::dot(axis, axis);
-    const double t = lengthSquared > 0
-                         ? std::clamp(math::dot(local - start, axis) / lengthSquared, 0.0, 1.0)
-                         : 0;
+    const auto shape = static_cast<GradientShape>((desc.kindFlags & flags::gradientShapeMask) >>
+                                                  flags::gradientShapeShift);
+    const double t = gradientParameter(shape, frame.payload.data() + desc.gradientOffset, local);
     const double position = t * (gradientRowTexels - 1);
     const auto lower = static_cast<std::size_t>(std::floor(position));
     const auto upper = std::min<std::size_t>(lower + 1, gradientRowTexels - 1);

@@ -167,3 +167,14 @@ add_library(prism_controls STATIC
     widgets/XYPad.cpp
 )
 target_link_libraries(prism_controls PUBLIC prism_widgets prism_host)
+
+if(PRISM_ENABLE_STUDIO)
+    add_library(prism_studio STATIC
+        studio/GpuProfilerHud.cpp
+        studio/HotReloader.cpp
+        studio/ProvenanceInspector.cpp
+        studio/StudioOverlay.cpp
+        studio/StudioSession.cpp
+    )
+    target_link_libraries(prism_studio PUBLIC prism_layout prism_render)
+endif()

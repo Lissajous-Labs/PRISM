@@ -80,6 +80,12 @@ prism_test(host_lifecycle unit/HostLifecycleTests.cpp prism_host prism_backend_c
 prism_test(processor_binding unit/ProcessorBindingTests.cpp prism_host prism_backend_cpu Threads::Threads)
 prism_test(telemetry unit/TelemetryTests.cpp prism_widgets Threads::Threads)
 prism_test(widget_interaction unit/WidgetInteractionTests.cpp prism_controls prism_backend_cpu)
+if(PRISM_ENABLE_STUDIO)
+    prism_test(studio unit/StudioTests.cpp prism_studio)
+else()
+    add_test(NAME studio_stripped COMMAND "${CMAKE_COMMAND}" "-DLIBRARIES=$<TARGET_FILE:prism_render>|$<TARGET_FILE:prism_layout>|$<TARGET_FILE:prism_controls>"
+        -P "${PROJECT_SOURCE_DIR}/tools/lint/CheckStudioStripped.cmake")
+endif()
 set_tests_properties(host_lifecycle processor_binding PROPERTIES LABELS host)
 if(PRISM_REALTIME_SANITIZE)
     prism_test(realtime_push unit/RealtimeTrapTests.cpp prism_core)

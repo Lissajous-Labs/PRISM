@@ -102,8 +102,10 @@ add_library(prism_dom STATIC
 target_link_libraries(prism_dom PUBLIC prism_math)
 
 add_library(prism_layout STATIC
+    dom/layout/AnchoredSolver.cpp
     dom/layout/FlexSolver.cpp
     dom/layout/GridSolver.cpp
     dom/layout/LayoutEngine.cpp
+    dom/layout/PatchCanvasLayout.cpp
 )
 target_link_libraries(prism_layout PUBLIC prism_dom)

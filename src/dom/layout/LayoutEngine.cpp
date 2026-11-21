@@ -1,5 +1,7 @@
 #include "dom/layout/LayoutEngine.h"
 
+#include "dom/layout/AnchoredSolver.h"
+#include "dom/layout/PatchCanvasLayout.h"
 #include "math/PixelSnap.h"
 
 #include <algorithm>
@@ -21,6 +23,7 @@ void LayoutEngine::layout(const DomDocument &document, const StyleResolver &styl
     boxes_.assign(document.capacity(), LayoutBox{});
     pixels_.assign(document.capacity(), PixelRect{});
     placed_.assign(document.capacity(), false);
+    scroll_.assign(document.capacity(), ScrollInfo{});
     if (document.root().valid()) {
         layoutNode(document.root(), {0, 0, viewport.width, viewport.height});
     }
@@ -76,8 +79,16 @@ void LayoutEngine::layoutNode(NodeId id, LayoutBox box) {
     if (items.empty()) {
         return;
     }
-    if (style.display == Keyword::grid) {
+    if (document_->attribute(id, "scroll") == std::optional<std::string_view>("vertical")) {
+        layoutScroll(id, content, items);
+    } else if (style.display == Keyword::grid) {
         layoutGrid(id, content, items);
+    } else if (style.display == Keyword::anchored) {
+        layoutAnchored(content, items);
+    } else if (style.display == Keyword::tabbed) {
+        layoutTabbed(id, content, items);
+    } else if (style.display == Keyword::patchCanvas) {
+        layoutCanvas(id, content, items);
     } else {
         layoutFlex(id, content, items);
     }
@@ -188,6 +199,108 @@ void LayoutEngine::layoutGrid(NodeId id, const LayoutBox &content,
         const Placement &p = placements[k];
         layoutNode(items[k], {content.x0 + p.mainStart, content.y0 + p.crossStart,
                               content.x0 + p.mainEnd, content.y0 + p.crossEnd});
+    }
+}
+
+float LayoutEngine::numberAttribute(NodeId id, std::string_view name, float fallback) const {
+    const auto text = document_->attribute(id, name);
+    if (!text) {
+        return fallback;
+    }
+    std::string_view digits = *text;
+    const bool negative = !digits.empty() && digits.front() == '-';
+    digits.remove_prefix(negative ? 1 : 0);
+    float value = 0;
+    float divisor = 0;
+    for (const char c : digits) {
+        if (c == '.' && divisor == 0) {
+            divisor = 1;
+        } else if (c >= '0' && c <= '9') {
+            value = value * 10 + static_cast<float>(c - '0');
+            divisor *= 10;
+        } else {
+            return fallback;
+        }
+    }
+    if (digits.empty()) {
+        return fallback;
+    }
+    value = divisor > 0 ? value / divisor : value;
+    return negative ? -value : value;
+}
+
+void LayoutEngine::layoutAnchored(const LayoutBox &content, const std::vector<NodeId> &items) {
+    for (const NodeId item : items) {
+        const LayoutBlock &child = styles_->style(item).layout;
+        const float w = content.width();
+        const float h = content.height();
+        const AnchoredItem anchored{
+            resolve(child.left, w, child.fontSize),  resolve(child.top, h, child.fontSize),
+            resolve(child.right, w, child.fontSize), resolve(child.bottom, h, child.fontSize),
+            resolve(child.width, w, child.fontSize), resolve(child.height, h, child.fontSize)};
+        const Placement p = solveAnchored(anchored, w, h);
+        layoutNode(item, {content.x0 + p.mainStart, content.y0 + p.crossStart,
+                          content.x0 + p.mainEnd, content.y0 + p.crossEnd});
+    }
+}
+
+void LayoutEngine::layoutTabbed(NodeId id, const LayoutBox &content,
+                                const std::vector<NodeId> &items) {
+    const auto active = static_cast<std::size_t>(std::max(0.0f, numberAttribute(id, "active", 0)));
+    const float bar = numberAttribute(id, "tab-height", 28);
+    if (active < items.size()) {
+        layoutNode(items[active],
+                   {content.x0, std::min(content.y1, content.y0 + bar), content.x1, content.y1});
+    }
+}
+
+void LayoutEngine::layoutScroll(NodeId id, const LayoutBox &content,
+                                const std::vector<NodeId> &items) {
+    const LayoutBlock &style = styles_->style(id).layout;
+    const float gap = resolve(style.gap, content.height(), style.fontSize).value_or(0);
+    const float bar = numberAttribute(id, "scrollbar-width", 10);
+    const auto heights = [&](float width) {
+        std::vector<float> result;
+        for (const NodeId item : items) {
+            const LayoutBlock &child = styles_->style(item).layout;
+            const auto fixed = resolve(child.height, content.height(), child.fontSize);
+            result.push_back(fixed ? *fixed : measure(item, width).height);
+        }
+        return result;
+    };
+    const ScrollPlan plan = planScroll(heights(content.width()), content.height(), gap, bar);
+    const auto finalHeights = plan.reservation > 0 ? heights(content.width() - plan.reservation)
+                                                   : heights(content.width());
+    float extent = 0;
+    for (std::size_t i = 0; i < finalHeights.size(); ++i) {
+        extent += finalHeights[i] + (i > 0 ? gap : 0);
+    }
+    const float offset = clampScroll(numberAttribute(id, "scroll-y", 0), extent, content.height());
+    scroll_[id.index] = {extent, offset, plan.reservation};
+    std::vector<Placement> placements;
+    stackColumn(finalHeights, gap, offset, placements);
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        layoutNode(items[i], {content.x0, content.y0 + placements[i].crossStart,
+                              content.x1 - plan.reservation, content.y0 + placements[i].crossEnd});
+    }
+}
+
+void LayoutEngine::layoutCanvas(NodeId id, const LayoutBox &content,
+                                const std::vector<NodeId> &items) {
+    const CanvasCamera camera(
+        {numberAttribute(id, "center-x", 0), numberAttribute(id, "center-y", 0)},
+        std::clamp(numberAttribute(id, "zoom", 1), minimumZoom, maximumZoom));
+    for (const NodeId item : items) {
+        const LayoutBlock &child = styles_->style(item).layout;
+        const math::Vector2 origin{numberAttribute(item, "canvas-x", 0),
+                                   numberAttribute(item, "canvas-y", 0)};
+        const float w = resolve(child.width, unbounded, child.fontSize).value_or(0);
+        const float h = resolve(child.height, unbounded, child.fontSize).value_or(0);
+        const math::Vector2 a = camera.toScreen(origin);
+        const math::Vector2 b = camera.toScreen(origin + math::Vector2{w, h});
+        layoutNode(item,
+                   {content.x0 + static_cast<float>(a.x), content.y0 + static_cast<float>(a.y),
+                    content.x0 + static_cast<float>(b.x), content.y0 + static_cast<float>(b.y)});
     }
 }
 

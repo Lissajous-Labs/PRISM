@@ -20,3 +20,9 @@ add_library(prism_render STATIC
     render/PrimitiveShading.cpp
 )
 target_link_libraries(prism_render PUBLIC prism_hal)
+
+add_library(prism_backend_cpu STATIC
+    backends/cpu/CpuRaster.cpp
+    backends/cpu/CpuRefBackend.cpp
+)
+target_link_libraries(prism_backend_cpu PUBLIC prism_render)

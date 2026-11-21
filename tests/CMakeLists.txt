@@ -32,6 +32,7 @@ prism_test(flatten_spring unit/FlattenSpringTests.cpp prism_math)
 prism_test(damage_region unit/DamageRegionTests.cpp prism_hal)
 prism_test(frame_graph unit/FrameGraphTests.cpp prism_hal)
 prism_test(device_topology unit/DeviceTopologyTests.cpp prism_hal Threads::Threads)
+prism_test(cpu_ref unit/CpuRefTests.cpp prism_backend_cpu)
 
 add_test(NAME no_comments COMMAND prism_check_comments "${PROJECT_SOURCE_DIR}")
 add_test(NAME comment_scanner COMMAND prism_check_comments --self-test)

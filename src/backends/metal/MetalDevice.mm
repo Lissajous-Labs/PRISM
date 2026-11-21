@@ -1,5 +1,6 @@
 #include "backends/metal/MetalBackend.h"
 #include "backends/metal/MetalState.h"
+#include "backends/metal/MetalWavetable3d.h"
 #include "render/ShaderLibrary.h"
 
 namespace prism::backends {
@@ -120,6 +121,11 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
                                     "uberCountingFragment", render::UberPipeline::sourceOver);
     state->clear = buildPipeline(state->device, state->library, "clearVertex", "clearFragment",
                                  render::UberPipeline::replace);
+    state->wavetable = buildPipeline(state->device, state->library, "wavetable3dVertex",
+                                     "wavetable3dFragment", render::UberPipeline::sourceOver);
+    if (!state->wavetable || !buildWavetableIndices(*state)) {
+        return nullptr;
+    }
     state->depthWrite = depthState(state->device, MTLCompareFunctionLess, YES);
     state->depthTest = depthState(state->device, MTLCompareFunctionLess, NO);
     state->depthReset = depthState(state->device, MTLCompareFunctionAlways, YES);

@@ -19,6 +19,8 @@ struct MetalDeviceState {
     id<MTLRenderPipelineState> counting = nil;
     id<MTLRenderPipelineState> countingCore = nil;
     id<MTLRenderPipelineState> clear = nil;
+    id<MTLRenderPipelineState> wavetable = nil;
+    std::array<id<MTLBuffer>, 2> wavetableIndices{};
     id<MTLDepthStencilState> depthWrite = nil;
     id<MTLDepthStencilState> depthTest = nil;
     id<MTLDepthStencilState> depthReset = nil;

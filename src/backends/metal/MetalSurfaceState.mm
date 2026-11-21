@@ -1,5 +1,6 @@
 #include "backends/metal/MetalSurfaceState.h"
 #include "backends/metal/MetalUpload.h"
+#include "backends/metal/MetalWavetable3d.h"
 
 namespace prism::backends {
 void MetalSurfaceState::createTargets() {
@@ -88,6 +89,8 @@ void MetalSurfaceState::bindUber(id<MTLRenderCommandEncoder> encoder,
     [encoder setFragmentBuffer:counter offset:0 atIndex:6];
     [encoder setFragmentTexture:(gradients ? gradients : device->emptyTexture) atIndex:0];
     for (std::size_t slot = 0; slot < textureSlots; ++slot) {
+        [encoder setVertexTexture:(textures[slot] ? textures[slot] : device->emptyTexture)
+                          atIndex:slot + 1];
         [encoder setFragmentTexture:(textures[slot] ? textures[slot] : device->emptyTexture)
                             atIndex:slot + 1];
     }
@@ -124,12 +127,27 @@ void MetalSurfaceState::drawOrdered(id<MTLRenderCommandEncoder> encoder, std::ui
         if (pipeline == nil) {
             continue;
         }
-        [encoder setRenderPipelineState:pipeline];
-        [encoder drawPrimitives:MTLPrimitiveTypeTriangle
-                    vertexStart:0
-                    vertexCount:6
-                  instanceCount:end - start
-                   baseInstance:opaqueCount + start];
+        const auto *descriptors = static_cast<const render::PrimitiveDesc *>(primitives.contents);
+        std::uint32_t cursor = start;
+        while (cursor < end) {
+            const auto index = indexScratch[opaqueCount + cursor];
+            if (descriptors[index].kind() == render::PrimitiveKind::wavetable3d) {
+                drawWavetable3d(encoder, *device, descriptors[index], index);
+                ++cursor;
+                continue;
+            }
+            const auto begin = cursor++;
+            while (cursor < end && descriptors[indexScratch[opaqueCount + cursor]].kind() !=
+                                       render::PrimitiveKind::wavetable3d) {
+                ++cursor;
+            }
+            [encoder setRenderPipelineState:pipeline];
+            [encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                        vertexStart:0
+                        vertexCount:6
+                      instanceCount:cursor - begin
+                       baseInstance:opaqueCount + begin];
+        }
     }
 }
 

@@ -2,6 +2,7 @@
 
 #include "render/PrimitiveShading.h"
 #include "render/ShadingSupport.h"
+#include "render/Wavetable3d.h"
 #include "render/vector/FineRaster.h"
 
 #include <algorithm>
@@ -133,7 +134,14 @@ void CpuRaster::shadeRange(const render::FrameView &frame, hal::Rect rect, const
                     continue;
                 }
                 const render::PrimitiveDesc &desc = frame.primitives[index];
-                const auto shaded = render::shadePrimitive(frame, desc, x + 0.5, y + 0.5);
+                render::ShadeResult shaded;
+                if (desc.kind() == render::PrimitiveKind::wavetable3d) {
+                    const auto texel = wavetableImages_[index].at(static_cast<std::uint32_t>(x),
+                                                                  static_cast<std::uint32_t>(y));
+                    shaded = {{texel[0], texel[1], texel[2], texel[3]}, {}, false};
+                } else {
+                    shaded = render::shadePrimitive(frame, desc, x + 0.5, y + 0.5);
+                }
                 color = render::blend(desc.blend(), shaded, color);
             }
             while (path < segment.pathEnd) {
@@ -183,6 +191,13 @@ void CpuRaster::render(const render::FrameView &frame, const hal::DamageRegion &
                        math::PremultipliedColor clear) {
     bin(frame);
     rasterizePaths(frame);
+    wavetableImages_.resize(frame.primitives.size());
+    for (std::size_t i = 0; i < frame.primitives.size(); ++i) {
+        if (frame.primitives[i].kind() == render::PrimitiveKind::wavetable3d) {
+            render::rasterWavetable3d(frame, frame.primitives[i], wavetableImages_[i], width_,
+                                      height_);
+        }
+    }
     const hal::Rect viewport{0, 0, static_cast<std::int32_t>(width_),
                              static_cast<std::int32_t>(height_)};
     const auto primitiveCount = static_cast<std::uint32_t>(frame.primitives.size());

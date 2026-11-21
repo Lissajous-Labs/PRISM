@@ -7,6 +7,7 @@
 #include "render/FrameRecords.h"
 #include "render/HalftoneField.h"
 #include "render/PrimitiveDesc.h"
+#include "render/Wavetable3d.h"
 #include "render/effects/EffectDraw.h"
 #include "render/vector/PathDraw.h"
 #include "render/vector/StrokeExpander.h"
@@ -65,6 +66,8 @@ class DrawList {
     void plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
                    std::uint32_t color);
     void halftoneField(const HalftonePayload &field, std::uint32_t texture);
+    void wavetable3d(const Wavetable3dUniforms &uniforms, std::uint32_t texture,
+                     std::uint32_t palette);
 
     [[nodiscard]] std::span<const PrimitiveDesc> primitives() const noexcept { return primitives_; }
     [[nodiscard]] std::span<const float> payload() const noexcept { return payload_; }

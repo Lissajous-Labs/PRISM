@@ -58,6 +58,7 @@ class CpuRaster {
     std::vector<std::vector<float>> pathCoverage_;
     render::FloatImage cropImage_;
     render::FloatImage blurredImage_;
+    std::vector<render::FloatImage> wavetableImages_;
 
     void bin(const render::FrameView &frame);
     void rasterizePaths(const render::FrameView &frame);

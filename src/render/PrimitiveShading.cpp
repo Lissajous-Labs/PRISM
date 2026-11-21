@@ -7,6 +7,7 @@
 #include "render/HalftoneField.h"
 #include "render/ShadingSupport.h"
 #include "render/TextureSampling.h"
+#include "render/Wavetable3d.h"
 
 #include <algorithm>
 #include <cmath>
@@ -286,6 +287,8 @@ ShadeResult shadePrimitive(const FrameView &frame, const PrimitiveDesc &desc, do
     case PrimitiveKind::halftoneField:
         result = solid(shadeHalftone(frame, desc, transform, local));
         break;
+    case PrimitiveKind::wavetable3d:
+        return solid(shadeWavetable3d(frame, desc, x, y));
     }
     if (desc.clipId != noClip) {
         const double clip = clipCoverage(frame, desc.clipId, x, y);

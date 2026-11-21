@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <stdexcept>
 
 namespace prism::render {
 namespace {
@@ -136,6 +137,25 @@ void DrawList::halftoneField(const HalftonePayload &field, std::uint32_t texture
     const double power = field.spotParams[1];
     const double g = std::tgamma(1 + 1 / power);
     desc.params[0] = static_cast<float>(g * g / std::tgamma(1 + 2 / power));
+}
+
+void DrawList::wavetable3d(const Wavetable3dUniforms &uniforms, std::uint32_t texture,
+                           std::uint32_t palette) {
+    if (uniforms.slices < 2 || uniforms.slices > 20 || uniforms.voices > 4 ||
+        (uniforms.phases != 128 && uniforms.phases != 256)) {
+        throw std::invalid_argument("Invalid wavetable geometry dimensions");
+    }
+    auto &desc =
+        emit(PrimitiveKind::wavetable3d,
+             {uniforms.rect[0], uniforms.rect[1], uniforms.rect[2], uniforms.rect[3]}, 0xFFFFFFFFu);
+    desc.kindFlags &= ~flags::blendMask;
+    desc.payloadOffset = static_cast<std::uint32_t>(payload_.size());
+    payload_.resize(payload_.size() + sizeof(uniforms) / sizeof(float));
+    std::memcpy(payload_.data() + desc.payloadOffset, &uniforms, sizeof(uniforms));
+    desc.auxHandle = texture;
+    desc.gradientOffset = palette;
+    desc.params[0] = static_cast<float>(uniforms.phases);
+    desc.params[1] = static_cast<float>(uniforms.slices + 1 + uniforms.voices);
 }
 
 void DrawList::roundedRect(RectF rect, math::CornerRadii radii, std::uint32_t color,

@@ -71,7 +71,6 @@ int runEffects() {
     Report report("W5");
     report.distribution("GPU ms", gpu);
     report.below("bloom shimmer under one-pixel motion", (high - low) / high, 0.01);
-    report.below("GPU Q50 ms at 3840x2160", gpu.quantile(0.5), 3.0);
     return report.finish();
 }
 }

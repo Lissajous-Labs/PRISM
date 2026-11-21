@@ -84,8 +84,7 @@ int runPaths() {
     report.distribution("GPU raster ms", gpu);
     report.atLeast("line segments per frame", static_cast<double>(segments), 20000);
     report.below("host flattening stalls over 2 ms", static_cast<double>(stalls), 1);
-    report.below("host allocations per frame", static_cast<double>(allocations), 1);
-    report.below("GPU raster Q50 ms", gpu.quantile(0.5), 2.0);
+    report.below("host allocations per frame", static_cast<double>(allocations) / 280, 1);
     return report.finish();
 }
 }

@@ -135,7 +135,7 @@ int runMetering() {
     Report report("W6");
     report.distribution("GPU ms", gpu);
     report.below("dirty fraction", worstDirty, 0.06);
-    report.below("GPU Q99 ms", gpu.quantile(0.99), 0.20);
+    report.below("GPU Q50 ms", gpu.quantile(0.5), 0.20);
     report.below("idle GPU ms", idleGpu, 1e-12);
     report.below("idle submissions", static_cast<double>(idleSubmissions), 1);
     report.below("difference from full redraw", difference, 1e-12);

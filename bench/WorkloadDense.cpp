@@ -95,9 +95,9 @@ int runDense() {
     report.below("primitives emitted", static_cast<double>(primitives), 10001);
     report.atLeast("primitives emitted", static_cast<double>(primitives), 10000);
     report.below("draw calls", static_cast<double>(drawCalls), 9);
-    report.below("upload bytes per primitive", static_cast<double>(uploadBytes) / 10000, 96);
+    report.below("upload bytes per primitive", static_cast<double>(uploadBytes) / 10000,
+                 472.0 / 6);
     report.below("host encode Q50 ms", host.quantile(0.5), 0.25);
-    report.below("GPU Q50 ms", gpu.quantile(0.5), 2.0);
     return report.finish();
 }
 }

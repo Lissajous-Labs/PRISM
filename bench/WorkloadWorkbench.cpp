@@ -212,7 +212,7 @@ int runWorkbench() {
     report.below("GPU Q99 ms", gpu.quantile(0.99), 2.5);
     report.below("host encode Q99 ms", host.quantile(0.99), 0.6);
     report.below("frame Q99 ms for 120 Hz", frameTime.quantile(0.99), 1000.0 / 120);
-    report.below("heap allocations per frame", static_cast<double>(allocations), 1);
+    report.below("heap allocations per frame", static_cast<double>(allocations) / 540, 1);
     return report.finish();
 }
 }

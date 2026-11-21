@@ -100,3 +100,10 @@ add_library(prism_dom STATIC
     dom/StyleResolver.cpp
 )
 target_link_libraries(prism_dom PUBLIC prism_math)
+
+add_library(prism_layout STATIC
+    dom/layout/FlexSolver.cpp
+    dom/layout/GridSolver.cpp
+    dom/layout/LayoutEngine.cpp
+)
+target_link_libraries(prism_layout PUBLIC prism_dom)

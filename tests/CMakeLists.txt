@@ -67,6 +67,7 @@ prism_test(scene_graph unit/SceneGraphTests.cpp prism_scene prism_backend_cpu)
 prism_test(batcher unit/BatcherTests.cpp prism_scene)
 prism_test(dom_codec unit/DomCodecTests.cpp prism_dom)
 prism_test(style_cascade unit/StyleCascadeTests.cpp prism_dom)
+prism_test(layout_solver unit/LayoutSolverTests.cpp prism_layout)
 
 add_test(NAME no_comments COMMAND prism_check_comments "${PROJECT_SOURCE_DIR}")
 add_test(NAME comment_scanner COMMAND prism_check_comments --self-test)

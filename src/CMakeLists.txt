@@ -17,5 +17,6 @@ target_link_libraries(prism_hal PUBLIC prism_math)
 
 add_library(prism_render STATIC
     render/DrawList.cpp
+    render/PrimitiveShading.cpp
 )
 target_link_libraries(prism_render PUBLIC prism_hal)

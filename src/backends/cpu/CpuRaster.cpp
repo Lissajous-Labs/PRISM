@@ -1,6 +1,8 @@
 #include "backends/cpu/CpuRaster.h"
 
 #include "render/PrimitiveShading.h"
+#include "render/ShadingSupport.h"
+#include "render/vector/FineRaster.h"
 
 #include <algorithm>
 #include <cmath>
@@ -79,6 +81,35 @@ void CpuRaster::bin(const render::FrameView &frame) {
     }
 }
 
+void CpuRaster::rasterizePaths(const render::FrameView &frame) {
+    if (pathCoverage_.size() < frame.paths.size()) {
+        pathCoverage_.resize(frame.paths.size());
+    }
+    for (std::size_t i = 0; i < frame.paths.size(); ++i) {
+        const render::PathDraw &draw = frame.paths[i];
+        pathCoverage_[i].resize(static_cast<std::size_t>(width_) * height_);
+        tiler_.run(frame.pathSegments.subspan(draw.firstSegment, draw.segmentCount), width_,
+                   height_);
+        render::rasterizeCoverage(tiler_, draw.rule, width_, height_, pathCoverage_[i]);
+    }
+}
+
+math::PremultipliedColor CpuRaster::applyPath(const render::FrameView &frame, std::size_t path,
+                                              std::int32_t x, std::int32_t y,
+                                              math::PremultipliedColor color) const {
+    const render::PathDraw &draw = frame.paths[path];
+    double coverage =
+        pathCoverage_[path][static_cast<std::size_t>(y) * width_ + static_cast<std::size_t>(x)];
+    if (coverage <= 0) {
+        return color;
+    }
+    if (draw.clipId != render::noClip) {
+        coverage *= render::clipCoverage(frame, draw.clipId, x + 0.5, y + 0.5);
+    }
+    const auto source = render::detail::scale(render::detail::decodeColor(draw.color), coverage);
+    return math::sourceOver(source, color);
+}
+
 void CpuRaster::shadeRect(const render::FrameView &frame, hal::Rect rect,
                           math::PremultipliedColor clear) {
     for (std::int32_t y = rect.y0; y < rect.y1; ++y) {
@@ -87,8 +118,12 @@ void CpuRaster::shadeRect(const render::FrameView &frame, hal::Rect rect,
                 static_cast<std::size_t>(y / static_cast<std::int32_t>(rasterTileSize)) * tilesX_ +
                 static_cast<std::size_t>(x / static_cast<std::int32_t>(rasterTileSize));
             math::PremultipliedColor color = clear;
+            std::size_t path = 0;
             for (std::uint32_t e = tileOffsets_[tile]; e < tileOffsets_[tile + 1]; ++e) {
                 const std::uint32_t index = tileEntries_[e];
+                while (path < frame.paths.size() && frame.paths[path].insertAfter <= index) {
+                    color = applyPath(frame, path++, x, y, color);
+                }
                 const Bounds &b = bounds_[index];
                 if (x < b.x0 || x >= b.x1 || y < b.y0 || y >= b.y1) {
                     continue;
@@ -96,6 +131,9 @@ void CpuRaster::shadeRect(const render::FrameView &frame, hal::Rect rect,
                 const render::PrimitiveDesc &desc = frame.primitives[index];
                 const auto shaded = render::shadePrimitive(frame, desc, x + 0.5, y + 0.5);
                 color = render::blend(desc.blend(), shaded, color);
+            }
+            while (path < frame.paths.size()) {
+                color = applyPath(frame, path++, x, y, color);
             }
             pixels_[static_cast<std::size_t>(y) * width_ + static_cast<std::size_t>(x)] = color;
         }
@@ -105,6 +143,7 @@ void CpuRaster::shadeRect(const render::FrameView &frame, hal::Rect rect,
 void CpuRaster::render(const render::FrameView &frame, const hal::DamageRegion &damage,
                        math::PremultipliedColor clear) {
     bin(frame);
+    rasterizePaths(frame);
     const hal::Rect viewport{0, 0, static_cast<std::int32_t>(width_),
                              static_cast<std::int32_t>(height_)};
     damage.forEachRect([&](hal::Rect rect) {

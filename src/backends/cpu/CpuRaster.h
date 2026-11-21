@@ -3,6 +3,7 @@
 #include "hal/DamageRegion.h"
 #include "math/Color.h"
 #include "render/FrameView.h"
+#include "render/vector/PathTiler.h"
 
 #include <cstdint>
 #include <span>
@@ -40,8 +41,15 @@ class CpuRaster {
     std::vector<std::uint32_t> tileCounts_;
     std::vector<std::uint32_t> tileOffsets_;
     std::vector<std::uint32_t> tileEntries_;
+    render::PathTiler tiler_;
+    std::vector<std::vector<float>> pathCoverage_;
 
     void bin(const render::FrameView &frame);
+    void rasterizePaths(const render::FrameView &frame);
+    [[nodiscard]] math::PremultipliedColor applyPath(const render::FrameView &frame,
+                                                     std::size_t path, std::int32_t x,
+                                                     std::int32_t y,
+                                                     math::PremultipliedColor color) const;
     void shadeRect(const render::FrameView &frame, hal::Rect rect, math::PremultipliedColor clear);
 };
 }

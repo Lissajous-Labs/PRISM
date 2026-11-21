@@ -4,6 +4,7 @@
 #include "render/RenderSurface.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -34,8 +35,8 @@ struct ReferenceTextures {
 inline render::FrameView viewOf(const render::DrawList &list,
                                 std::span<const render::TextureView> textures = {},
                                 std::span<const float> gradients = {}) {
-    return {list.primitives(), list.payload(), list.transforms(),
-            list.clips(),      gradients,      textures};
+    return {list.primitives(), list.payload(), list.transforms(), list.clips(),
+            gradients,         textures,       list.paths(),      list.pathSegments()};
 }
 
 inline std::vector<float> renderFull(render::RenderSurface &surface, const render::FrameView &view,
@@ -60,6 +61,22 @@ inline void buildReferenceScene(render::DrawList &list, float shift) {
     list.capsule({70 + shift, 80}, {110, 110}, 3, render::packColor(0, 255, 0, 255));
     list.quadBezier({5, 120}, {40, 70}, {80, 125}, 1.5f, render::packColor(0, 0, 255, 255));
     list.triangle({90, 70}, {125, 75}, {100, 120}, 3, render::packColor(255, 255, 0, 180));
+    render::VectorPath star;
+    for (int i = 0; i < 5; ++i) {
+        const double angle = -1.5707963 + i * 2.513274;
+        const math::Vector2 point{60 + 18 * std::cos(angle) + shift, 30 + 18 * std::sin(angle)};
+        i == 0 ? star.moveTo(point) : star.lineTo(point);
+    }
+    star.close();
+    list.fillPath(star, render::packColor(220, 40, 200, 230), render::FillRule::evenOdd);
+    render::VectorPath curve;
+    curve.moveTo({8, 40});
+    curve.cubicTo({30, 0}, {50, 80}, {70 + shift, 20});
+    render::StrokeStyle style;
+    style.width = 3;
+    style.cap = render::LineCap::round;
+    style.join = render::LineJoin::round;
+    list.strokePath(curve, style, render::packColor(255, 220, 0, 255));
     list.setClip(list.addClip(render::ClipKind::roundedRect, {0, 60, 64, 128}, {10, 10, 10, 10}));
     list.setBlend(hal::BlendMode::screen);
     list.roundedRect({10, 64, 70, 100}, {}, render::packColor(80, 80, 200, 200));

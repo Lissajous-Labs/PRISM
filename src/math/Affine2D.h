@@ -1,21 +1,12 @@
 #pragma once
 
 #include "TrigPoly.h"
+#include "Vector2.h"
 
 #include <cmath>
 #include <optional>
 
 namespace prism::math {
-struct Vector2 {
-    double x;
-    double y;
-};
-
-struct Point2 {
-    double x;
-    double y;
-};
-
 struct SingularValues {
     double maximum;
     double minimum;

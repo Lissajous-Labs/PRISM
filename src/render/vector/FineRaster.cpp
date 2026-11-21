@@ -26,7 +26,7 @@ void rasterizeCoverage(const PathTiler &tiler, FillRule rule, std::uint32_t widt
                         sum += fixedContribution(pieces[p], i, j);
                     }
                     coverage[static_cast<std::size_t>(y) * width + x] =
-                        windingToAlpha(static_cast<float>(sum) / windingScale, rule);
+                        windingToAlpha(resolveWinding(sum), rule);
                 }
             }
         }

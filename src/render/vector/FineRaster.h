@@ -52,6 +52,10 @@ inline constexpr float windingScale = 1048576.0f;
         std::lrint(pieceContribution(packed, column, row) * windingScale));
 }
 
+[[nodiscard]] inline float resolveWinding(std::int32_t fixedSum) noexcept {
+    return static_cast<float>((fixedSum + 128) >> 8) / 4096.0f;
+}
+
 [[nodiscard]] inline float windingToAlpha(float winding, FillRule rule) noexcept {
     const float magnitude = std::fabs(winding);
     if (rule == FillRule::nonZero) {

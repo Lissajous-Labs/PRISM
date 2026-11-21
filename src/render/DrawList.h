@@ -6,6 +6,9 @@
 #include "math/SdfShapes.h"
 #include "render/FrameRecords.h"
 #include "render/PrimitiveDesc.h"
+#include "render/vector/PathDraw.h"
+#include "render/vector/StrokeExpander.h"
+#include "render/vector/VectorPath.h"
 
 #include <cstdint>
 #include <optional>
@@ -54,6 +57,8 @@ class DrawList {
     void boxShadow(RectF box, float radius, float sigma, std::uint32_t color, bool inset = false);
     void texturedQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint32_t texture,
                       std::uint32_t color, float pixelRange = 0);
+    void fillPath(const VectorPath &path, std::uint32_t color, FillRule rule = FillRule::nonZero);
+    void strokePath(const VectorPath &path, const StrokeStyle &style, std::uint32_t color);
     void plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
                    std::uint32_t color);
 
@@ -63,12 +68,20 @@ class DrawList {
         return transforms_;
     }
     [[nodiscard]] std::span<const ClipRecord> clips() const noexcept { return clips_; }
+    [[nodiscard]] std::span<const PathDraw> paths() const noexcept { return paths_; }
+    [[nodiscard]] std::span<const LineSegment> pathSegments() const noexcept {
+        return pathSegments_;
+    }
 
   private:
     std::vector<PrimitiveDesc> primitives_;
     std::vector<float> payload_;
     std::vector<TransformRecord> transforms_;
     std::vector<ClipRecord> clips_;
+    std::vector<PathDraw> paths_;
+    std::vector<LineSegment> pathSegments_;
+    std::vector<Polyline> polylineScratch_;
+    std::vector<Polyline> outlineScratch_;
     std::uint16_t transform_ = identityTransform;
     std::uint16_t clip_ = noClip;
     hal::BlendMode blend_ = hal::BlendMode::sourceOver;
@@ -78,5 +91,6 @@ class DrawList {
 
     PrimitiveDesc &emit(PrimitiveKind kind, RectF bounds, std::uint32_t color);
     std::uint32_t appendPayload(std::initializer_list<float> values);
+    void emitPath(std::uint32_t firstSegment, std::uint32_t color, FillRule rule);
 };
 }

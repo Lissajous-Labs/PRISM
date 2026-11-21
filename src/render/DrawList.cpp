@@ -1,5 +1,6 @@
 #include "render/DrawList.h"
 
+#include "math/WangFlatten.h"
 #include <algorithm>
 #include <cmath>
 
@@ -26,6 +27,8 @@ void DrawList::clear() {
     payload_.clear();
     transforms_.clear();
     clips_.clear();
+    paths_.clear();
+    pathSegments_.clear();
     transforms_.push_back(*TransformRecord::from(math::Affine2D{}));
     clips_.push_back({noClip, identityTransform, ClipKind::none, {}, {}});
     transform_ = identityTransform;
@@ -225,5 +228,42 @@ void DrawList::plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns,
     desc.params[0] = thickness;
     desc.params[1] = static_cast<float>(columns);
     desc.payloadOffset = appendPayload({rect.x0, rect.y0, rect.x1, rect.y1});
+}
+
+void DrawList::emitPath(std::uint32_t firstSegment, std::uint32_t color, FillRule rule) {
+    const auto count = static_cast<std::uint32_t>(pathSegments_.size()) - firstSegment;
+    if (count != 0) {
+        paths_.push_back({firstSegment, count, color,
+                          static_cast<std::uint32_t>(primitives_.size()), clip_, rule, 0});
+    }
+}
+
+void DrawList::fillPath(const VectorPath &path, std::uint32_t color, FillRule rule) {
+    const auto first = static_cast<std::uint32_t>(pathSegments_.size());
+    polylineScratch_.clear();
+    flattenPolylines(path, transforms_[transform_].forwardTransform(), math::defaultFlattenTolerance,
+                     polylineScratch_);
+    appendFill(polylineScratch_, pathSegments_);
+    emitPath(first, color, rule);
+}
+
+void DrawList::strokePath(const VectorPath &path, const StrokeStyle &style, std::uint32_t color) {
+    const auto first = static_cast<std::uint32_t>(pathSegments_.size());
+    const math::Affine2D transform = transforms_[transform_].forwardTransform();
+    const double scale = std::max(transform.singularValues().maximum, 1e-12);
+    StrokeStyle local = style;
+    local.tolerance = style.tolerance / scale;
+    polylineScratch_.clear();
+    outlineScratch_.clear();
+    flattenPolylines(path, math::Affine2D{}, local.tolerance, polylineScratch_);
+    strokeOutlines(polylineScratch_, local, outlineScratch_);
+    for (Polyline &outline : outlineScratch_) {
+        for (math::Vector2 &point : outline.points) {
+            const auto mapped = transform.apply(math::Point2{point.x, point.y});
+            point = {mapped.x, mapped.y};
+        }
+    }
+    appendFill(outlineScratch_, pathSegments_);
+    emitPath(first, color, FillRule::nonZero);
 }
 }

@@ -2,6 +2,7 @@
 
 #include "render/FrameRecords.h"
 #include "render/PrimitiveDesc.h"
+#include "render/vector/PathDraw.h"
 
 #include <cstdint>
 #include <span>
@@ -23,5 +24,7 @@ struct FrameView {
     std::span<const ClipRecord> clips;
     std::span<const float> gradientRows;
     std::span<const TextureView> textures;
+    std::span<const PathDraw> paths = {};
+    std::span<const LineSegment> pathSegments = {};
 };
 }

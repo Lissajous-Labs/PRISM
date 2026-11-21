@@ -1,9 +1,10 @@
 #pragma once
 
-#include "math/SpringCable.h"
+#include "math/Vector2.h"
 #include "widgets/NodeCard.h"
 
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace prism::widgets {
@@ -28,13 +29,12 @@ class VerletCableLayer {
 
     [[nodiscard]] bool active(std::size_t cable) const noexcept { return cables_[cable].active; }
     [[nodiscard]] std::span<const math::Vector2> points(std::size_t cable) const noexcept {
-        return cables_[cable].body.points();
+        return {points_.data() + cable * cablePoints, cablePoints};
     }
     [[nodiscard]] std::size_t count() const noexcept;
 
   private:
     struct Cable {
-        math::VerletCable<cablePoints> body;
         const NodeCard *from;
         std::size_t fromPort;
         const NodeCard *to;
@@ -45,5 +45,11 @@ class VerletCableLayer {
     std::size_t capacity_;
     CableSettings settings_;
     std::vector<Cable> cables_;
+    std::vector<double> segment_;
+    std::vector<double> x_;
+    std::vector<double> y_;
+    std::vector<double> previousX_;
+    std::vector<double> previousY_;
+    std::vector<math::Vector2> points_;
 };
 }

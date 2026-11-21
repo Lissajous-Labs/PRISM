@@ -67,6 +67,40 @@ struct WavetableView {
     return wrapPhase(phase * ratio);
 }
 
+struct WavetableWarp {
+    double mirror = 0;
+    double bend = 0;
+    double sync = 1;
+    double phaseOffset = 0;
+    double quantization = 0;
+    double sharpness = 10;
+    double amplitudeModulation = 0;
+    double modulationHarmonic = 1;
+    double modulationPhase = 0;
+
+    [[nodiscard]] double phase(double theta) const noexcept {
+        double p = wrapPhase(theta + phaseOffset);
+        if (mirror > 0) {
+            p = mirrorWarp(p, mirror);
+        }
+        if (bend != 0) {
+            p = bendWarp(p, bend);
+        }
+        return syncWarp(p, sync);
+    }
+    [[nodiscard]] double sample(WavetableView table, double theta, double morph) const noexcept {
+        double value = table.sample(phase(theta), morph);
+        if (quantization > 0) {
+            value = quantizedWarp(value, quantization, sharpness);
+        }
+        if (amplitudeModulation > 0) {
+            value = amplitudeWarp(value, theta, amplitudeModulation, modulationHarmonic,
+                                  modulationPhase);
+        }
+        return value;
+    }
+};
+
 struct WavetableCamera {
     double yaw = -std::numbers::pi / 5;
     double pitch = 28 * std::numbers::pi / 180;

@@ -50,6 +50,14 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
         if (slot < view.textures.size()) {
             const auto &texture = view.textures[slot];
             const auto &previous = uploadedTextures[slot];
+            if (texture.nativeTexture != nullptr) {
+                textures[slot] = (__bridge id<MTLTexture>)texture.nativeTexture;
+                uploadedTextures[slot] = texture;
+                continue;
+            }
+            if (previous.nativeTexture != nullptr) {
+                textures[slot] = nil;
+            }
             if (textures[slot] == nil || texture.generation == 0 ||
                 previous.generation != texture.generation ||
                 previous.texels.data() != texture.texels.data() ||

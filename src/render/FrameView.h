@@ -18,6 +18,7 @@ struct TextureView {
     std::span<const float> texels;
     hal::PixelFormat format = hal::PixelFormat::rgba32Float;
     std::uint64_t generation = 0;
+    void *nativeTexture = nullptr;
 };
 
 struct FrameView {

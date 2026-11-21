@@ -97,6 +97,7 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
     NSError *error = nil;
     state->library = [state->device newLibraryWithSource:text options:options error:&error];
     if (state->library == nil) {
+        NSLog(@"Metal shader compilation failed: %@", error);
         return nullptr;
     }
     state->programmableBlending = [state->device supportsFamily:MTLGPUFamilyApple1];
@@ -181,6 +182,11 @@ std::unique_ptr<hal::BackendDevice> MetalDevice::create() {
 std::unique_ptr<render::RenderSurface>
 MetalDevice::createRenderSurface(const hal::SurfaceDesc &desc) {
     return std::make_unique<MetalSurface>(state_, desc);
+}
+
+std::unique_ptr<MetalSpectrogram> MetalDevice::createSpectrogram(math::WavetableView table,
+                                                                 std::uint32_t rows) {
+    return std::make_unique<MetalSpectrogram>(state_, table, rows);
 }
 
 bool MetalDevice::virtualized() const {

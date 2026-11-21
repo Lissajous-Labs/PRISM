@@ -1,5 +1,6 @@
 #pragma once
 
+#include "backends/metal/MetalSpectrogram.h"
 #include "render/RenderSurface.h"
 #include "render/UberBatches.h"
 
@@ -54,6 +55,8 @@ class MetalDevice final : public render::RenderDevice {
     }
     [[nodiscard]] std::unique_ptr<render::RenderSurface>
     createRenderSurface(const hal::SurfaceDesc &desc) override;
+    [[nodiscard]] std::unique_ptr<MetalSpectrogram> createSpectrogram(math::WavetableView table,
+                                                                      std::uint32_t rows = 64);
     [[nodiscard]] bool virtualized() const;
     [[nodiscard]] bool reflectLayout(std::span<std::uint32_t, 16> output) const;
     [[nodiscard]] bool evaluateShadows(std::span<const ShadowQuery> queries,

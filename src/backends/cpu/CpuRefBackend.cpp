@@ -22,6 +22,11 @@ bool CpuRefSurface::render(const render::FrameRequest &request) {
     if (lost_ || request.damage == nullptr) {
         return false;
     }
+    for (const auto &texture : request.view.textures) {
+        if (texture.nativeTexture != nullptr && texture.texels.empty()) {
+            return false;
+        }
+    }
     raster_.render(request.view, *request.damage, request.clear);
     bloom_ = request.bloom ? std::optional(*request.bloom) : std::nullopt;
     return true;

@@ -96,5 +96,7 @@ add_library(prism_dom STATIC
     dom/DomJson.cpp
     dom/DomReconcile.cpp
     dom/DomXml.cpp
+    dom/StyleCompiler.cpp
+    dom/StyleResolver.cpp
 )
 target_link_libraries(prism_dom PUBLIC prism_math)

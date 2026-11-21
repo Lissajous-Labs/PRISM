@@ -7,6 +7,7 @@
 #include "render/FrameView.h"
 #include "render/vector/TileGeometry.h"
 
+#include <span>
 #include <vector>
 
 namespace prism::backends {
@@ -18,6 +19,10 @@ struct MetalPathBuffers {
     id<MTLBuffer> backdrops = nil;
     id<MTLBuffer> cursors = nil;
     id<MTLBuffer> pieces = nil;
+    std::uint32_t originX = 0;
+    std::uint32_t originY = 0;
+    std::uint32_t columns = 0;
+    std::uint32_t rows = 0;
 };
 
 struct PathFineTargets {
@@ -33,7 +38,7 @@ class MetalPathEngine {
     void prepare(MetalDeviceState &device, id<MTLCommandBuffer> commands,
                  const render::FrameView &frame, hal::Extent extent);
     void encodeFine(MetalDeviceState &device, id<MTLCommandBuffer> commands, std::size_t path,
-                    const render::FrameView &frame, hal::Rect damage,
+                    const render::FrameView &frame, std::span<const hal::Rect> damage,
                     const PathFineTargets &targets);
 
   private:

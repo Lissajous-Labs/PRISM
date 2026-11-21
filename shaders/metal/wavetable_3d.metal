@@ -174,6 +174,7 @@ vertex WavetableVertex wavetable3dVertex(uint vertexId [[vertex_id]], uint insta
         }
         out.data.z = focus; out.data.w = depth;
     }
+    p -= uniforms.origin;
     out.position = float4(p.x / uniforms.viewport.x * 2.0f - 1.0f, 1.0f - p.y / uniforms.viewport.y * 2.0f,
                            1.0f - float(d.depth) / float(uniforms.maxDepth + 1u), 1.0f);
     return out;
@@ -189,10 +190,12 @@ fragment float4 wavetable3dFragment(WavetableVertex in [[stage_in]],
                                      device const TransformRecord *transforms [[buffer(2)]],
                                      device const ClipRecord *clips [[buffer(3)]],
                                      texture2d<float> gradients [[texture(0)]],
-                                     constant WavetableLineData &line [[buffer(10)]]) {
+                                     constant WavetableLineData &line [[buffer(10)]],
+                                     constant FrameUniforms &uniforms [[buffer(4)]]) {
     PrimitiveDesc d = primitives[in.primitive];
     device const float *h = payload + d.payloadOffset;
-    float2 local = applyInverse(transforms[d.transformId], in.position.xy);
+    float2 pixel = in.position.xy + uniforms.origin;
+    float2 local = applyInverse(transforms[d.transformId], pixel);
     if (local.x < h[0] || local.x > h[2] || local.y < h[1] || local.y > h[3]) { return float4(0.0f); }
     bool active = (in.flags & 1u) != 0u, ghost = (in.flags & 2u) != 0u;
     bool studio = (as_type<uint>(h[19]) & 4u) != 0u;
@@ -200,7 +203,6 @@ fragment float4 wavetable3dFragment(WavetableVertex in [[stage_in]],
     if (in.mode == 3u) {
         float best = INFINITY, lineDepth = 0.0f;
         float2 closest = float2(0.0f), tangent = float2(1.0f, 0.0f);
-        float2 pixel = in.position.xy;
         for (uint c = 0; c < 16u; ++c) {
             float4 box = line.chunks[c];
             if (pixel.x < box.x || pixel.y < box.y || pixel.x > box.z || pixel.y > box.w) { continue; }
@@ -261,5 +263,5 @@ fragment float4 wavetable3dFragment(WavetableVertex in [[stage_in]],
         }
     }
     FrameBuffers frame; frame.primitives = primitives; frame.payload = payload; frame.transforms = transforms; frame.clips = clips;
-    return result * clipCoverage(frame, d.clipId, in.position.xy);
+    return result * clipCoverage(frame, d.clipId, pixel);
 }

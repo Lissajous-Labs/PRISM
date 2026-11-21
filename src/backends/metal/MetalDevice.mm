@@ -113,8 +113,8 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
             return nullptr;
         }
     }
-    state->opaque = buildPipeline(state->device, state->library, "uberCoreVertex", "uberFragment",
-                                  render::UberPipeline::replace);
+    state->opaque = buildPipeline(state->device, state->library, "uberCoreVertex",
+                                  "uberCoreFragment", render::UberPipeline::replace);
     state->countingCore = buildPipeline(state->device, state->library, "uberCoreVertex",
                                         "uberCountingFragment", render::UberPipeline::replace);
     state->counting = buildPipeline(state->device, state->library, "uberVertex",
@@ -156,6 +156,7 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
     state->shadowProbe = compute("shadowProbe");
     state->formantColumns = compute("formantColumns");
     state->halftoneCells = compute("halftoneCells");
+    state->shadowSprites = compute("shadowSprites");
     MTLTextureDescriptor *empty =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
                                                            width:1
@@ -168,7 +169,8 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
                              withBytes:zero
                            bytesPerRow:16];
     if (!state->opaque || !state->counting || !state->countingCore || !state->clear ||
-        !state->reflect || !state->formantColumns || !state->halftoneCells) {
+        !state->reflect || !state->formantColumns || !state->halftoneCells ||
+        !state->shadowSprites) {
         return nullptr;
     }
     return state;

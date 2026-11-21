@@ -13,6 +13,7 @@ struct PathUniforms {
     float depth;
     uint clipId;
     int4 damage;
+    int4 origin;
 };
 
 uint quantizeLocal(float value) {
@@ -122,7 +123,7 @@ kernel void pathBinCount(device const float4 *segments [[buffer(0)]], constant P
     if (index >= u.segmentCount) {
         return;
     }
-    float4 s = segments[index];
+    float4 s = segments[index] - float4(float2(u.origin.xy), float2(u.origin.xy)) * pathTile;
     PieceSink sink;
     sink.counts = counts;
     sink.scatter = false;
@@ -196,8 +197,9 @@ kernel void pathScatter(device const float4 *segments [[buffer(0)]], constant Pa
     sink.offsets = offsets;
     sink.pieces = pieces;
     sink.scatter = true;
-    visitTilePieces(segments[index], u, sink);
-    visitBoundarySteps(segments[index], u, sink);
+    float4 s = segments[index] - float4(float2(u.origin.xy), float2(u.origin.xy)) * pathTile;
+    visitTilePieces(s, u, sink);
+    visitBoundarySteps(s, u, sink);
 }
 
 float coverageAntiderivative(float value) {
@@ -240,7 +242,8 @@ kernel void pathFine(device const uint *offsets [[buffer(0)]], device const int 
                      depth2d<float, access::read> depth [[texture(1)]], uint2 tileIndex [[threadgroup_position_in_grid]],
                      uint2 local [[thread_position_in_threadgroup]]) {
     threadgroup uint2 shared[256];
-    uint tile = tileIndex.y * u.columns + tileIndex.x;
+    uint2 localTile = tileIndex + uint2(u.origin.zw);
+    uint tile = localTile.y * u.columns + localTile.x;
     uint first = offsets[tile];
     uint last = offsets[tile + 1];
     uint flat = local.y * 16u + local.x;
@@ -256,7 +259,7 @@ kernel void pathFine(device const uint *offsets [[buffer(0)]], device const int 
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
     }
-    uint2 pixel = tileIndex * 16u + local;
+    uint2 pixel = (localTile + uint2(u.origin.xy)) * 16u + local;
     if (pixel.x >= target.get_width() || pixel.y >= target.get_height()) {
         return;
     }

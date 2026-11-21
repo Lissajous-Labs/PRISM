@@ -44,6 +44,7 @@ struct MetalDeviceState {
     id<MTLComputePipelineState> shadowProbe = nil;
     id<MTLComputePipelineState> formantColumns = nil;
     id<MTLComputePipelineState> halftoneCells = nil;
+    id<MTLComputePipelineState> shadowSprites = nil;
     id<MTLTexture> emptyTexture = nil;
     bool programmableBlending = false;
 };

@@ -46,10 +46,20 @@ void MetalSurface::setEarlyDepth(bool enabled) noexcept { state_->earlyDepth = e
 void MetalSurface::setFragmentCounting(bool enabled) noexcept { state_->counting = enabled; }
 std::uint32_t MetalSurface::lastFragmentCount() const noexcept { return state_->fragments; }
 double MetalSurface::lastGpuMilliseconds() const noexcept { return state_->gpuMilliseconds; }
+std::uint32_t MetalSurface::lastDrawCalls() const noexcept { return state_->drawCalls; }
+std::size_t MetalSurface::lastUploadBytes() const noexcept { return state_->uploadBytes; }
+bool MetalSurface::lastSubmitted() const noexcept { return state_->submitted; }
 
 bool MetalSurface::render(const render::FrameRequest &request) {
     if (state_->lost || request.damage == nullptr) {
         return false;
+    }
+    state_->submitted = !request.damage->empty() || request.bloom != nullptr;
+    if (!state_->submitted) {
+        state_->gpuMilliseconds = 0;
+        state_->drawCalls = 0;
+        state_->uploadBytes = 0;
+        return true;
     }
     @autoreleasepool {
         state_->uploadFrame(request.view);

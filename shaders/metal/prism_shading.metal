@@ -267,7 +267,10 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
         result.color = shadeFormantGpu(d, frame.payload, t, local, texture, physical);
     } else if (kind == kindShadow) {
         LocalBox box = payloadBox(frame.payload, d.payloadOffset);
-        float blurred = roundedBoxShadow(local - box.center, box.half_, d.params[1], d.params[0]);
+        float blurred = d.auxHandle != noTexture && (d.kindFlags & insetFlag) == 0u
+                            ? sampleShadowSprite(frame.shadowTable, frame.shadowSprites, d.auxHandle,
+                                                 local - box.center)
+                            : roundedBoxShadow(local - box.center, box.half_, d.params[1], d.params[0]);
         float alpha = blurred;
         if ((d.kindFlags & insetFlag) != 0u) {
             alpha = fieldCoverage(fieldInsetBox, t, d, frame.payload, texture, local) * (1.0f - blurred);

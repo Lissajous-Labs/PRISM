@@ -72,6 +72,7 @@ if(APPLE)
         backends/metal/MetalEffects.mm
         backends/metal/MetalFormantCache.mm
         backends/metal/MetalHalftoneCache.mm
+        backends/metal/MetalShadowCache.mm
         backends/metal/MetalPathEngine.mm
         backends/metal/MetalSpectrogram.mm
         backends/metal/MetalWavetable3d.mm

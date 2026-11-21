@@ -13,6 +13,7 @@ constant float2 quadCorners[6] = {float2(0.0f, 0.0f), float2(1.0f, 0.0f), float2
 
 vertex VertexOut uberVertex(uint vertexId [[vertex_id]], uint instanceId [[instance_id]],
                             device const PrimitiveDesc *primitives [[buffer(0)]],
+                            device const float *payload [[buffer(1)]],
                             device const TransformRecord *transforms [[buffer(2)]],
                             constant FrameUniforms &uniforms [[buffer(4)]],
                             device const uint *indices [[buffer(5)]]) {
@@ -20,7 +21,16 @@ vertex VertexOut uberVertex(uint vertexId [[vertex_id]], uint instanceId [[insta
     PrimitiveDesc d = primitives[index];
     float2 corner = quadCorners[vertexId];
     float2 local = float2(mix(d.bounds[0], d.bounds[2], corner.x), mix(d.bounds[1], d.bounds[3], corner.y));
-    float2 physical = applyForward(transforms[d.transformId], local);
+    if ((d.kindFlags & kindMask) == kindCapsule) {
+        float2 a = float2(payload[d.payloadOffset], payload[d.payloadOffset + 1]);
+        float2 b = float2(payload[d.payloadOffset + 2], payload[d.payloadOffset + 3]);
+        float reach = d.params[0] + 1.5f;
+        float2 axis = length(b - a) > 1e-6f ? normalize(b - a) : float2(1.0f, 0.0f);
+        float2 normal = float2(-axis.y, axis.x);
+        float2 along = mix(a - axis * reach, b + axis * reach, corner.x);
+        local = along + normal * reach * (2.0f * corner.y - 1.0f);
+    }
+    float2 physical = applyForward(transforms[d.transformId], local) - uniforms.origin;
     VertexOut out;
     out.position = float4(physical.x / uniforms.viewport.x * 2.0f - 1.0f, 1.0f - physical.y / uniforms.viewport.y * 2.0f,
                           1.0f - float(d.depth) / float(uniforms.maxDepth + 1u), 1.0f);
@@ -45,7 +55,7 @@ vertex VertexOut uberCoreVertex(uint vertexId [[vertex_id]], uint instanceId [[i
     float2 low = float2(payload[offset] + edges.x, payload[offset + 1] + edges.y);
     float2 high = max(float2(payload[offset + 2] - edges.z, payload[offset + 3] - edges.w), low);
     float2 corner = quadCorners[vertexId];
-    float2 physical = applyForward(transforms[d.transformId], mix(low, high, corner));
+    float2 physical = applyForward(transforms[d.transformId], mix(low, high, corner)) - uniforms.origin;
     VertexOut out;
     out.position = float4(physical.x / uniforms.viewport.x * 2.0f - 1.0f, 1.0f - physical.y / uniforms.viewport.y * 2.0f,
                           1.0f - float(d.depth) / float(uniforms.maxDepth + 1u), 1.0f);
@@ -55,24 +65,34 @@ vertex VertexOut uberCoreVertex(uint vertexId [[vertex_id]], uint instanceId [[i
 
 ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives, device const float *payload,
                        device const TransformRecord *transforms, device const ClipRecord *clips,
-                       device const float4 *halftoneCells, texture2d<float> gradients,
-                       array<texture2d<float>, 24> textures) {
+                       device const float4 *halftoneCells, device const ShadowSprite *shadowTable,
+                       device const float *shadowSprites, texture2d<float> gradients,
+                       array<texture2d<float>, 24> textures, constant FrameUniforms &uniforms) {
     FrameBuffers frame;
     frame.primitives = primitives;
     frame.payload = payload;
     frame.transforms = transforms;
     frame.clips = clips;
     frame.halftoneCells = halftoneCells;
+    frame.shadowTable = shadowTable;
+    frame.shadowSprites = shadowSprites;
     PrimitiveDesc d = primitives[in.primitive];
     uint slot = d.auxHandle == noTexture ? 0u : min(d.auxHandle, 23u);
-    return shadePrimitive(frame, d, gradients, textures[slot], in.position.xy);
+    return shadePrimitive(frame, d, gradients, textures[slot], in.position.xy + uniforms.origin);
+}
+
+fragment float4 uberCoreFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]]) {
+    return decodeColor(primitives[in.primitive].color);
 }
 
 fragment float4 uberFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]],
                              device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
                              device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
-                             texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]]) {
-    return shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, gradients, textures).color;
+                             device const ShadowSprite *shadowTable [[buffer(8)]], device const float *shadowSprites [[buffer(9)]],
+                             texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]],
+                             constant FrameUniforms &uniforms [[buffer(4)]]) {
+    return shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, shadowTable, shadowSprites,
+                         gradients, textures, uniforms).color;
 }
 
 [[early_fragment_tests]] fragment float4 uberCountingFragment(VertexOut in [[stage_in]],
@@ -80,17 +100,23 @@ fragment float4 uberFragment(VertexOut in [[stage_in]], device const PrimitiveDe
                                    device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
                                    device const ClipRecord *clips [[buffer(3)]], device atomic_uint *counter [[buffer(6)]],
                                    device const float4 *halftoneCells [[buffer(7)]],
-                                   texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]]) {
+                                   device const ShadowSprite *shadowTable [[buffer(8)]], device const float *shadowSprites [[buffer(9)]],
+                                   texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]],
+                                   constant FrameUniforms &uniforms [[buffer(4)]]) {
     atomic_fetch_add_explicit(counter, 1u, memory_order_relaxed);
-    return shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, gradients, textures).color;
+    return shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, shadowTable, shadowSprites,
+                         gradients, textures, uniforms).color;
 }
 
 fragment float4 uberMultiplyFragment(VertexOut in [[stage_in]], float4 destination [[color(0)]],
                                      device const PrimitiveDesc *primitives [[buffer(0)]],
                                      device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
                                      device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
-                                     texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]]) {
-    float4 source = shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, gradients, textures).color;
+                                     device const ShadowSprite *shadowTable [[buffer(8)]], device const float *shadowSprites [[buffer(9)]],
+                                     texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]],
+                                     constant FrameUniforms &uniforms [[buffer(4)]]) {
+    float4 source = shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, shadowTable, shadowSprites,
+                                  gradients, textures, uniforms).color;
     float3 rgb = source.rgb * destination.rgb + (1.0f - destination.a) * source.rgb + (1.0f - source.a) * destination.rgb;
     return float4(rgb, source.a + destination.a * (1.0f - source.a));
 }
@@ -98,8 +124,11 @@ fragment float4 uberMultiplyFragment(VertexOut in [[stage_in]], float4 destinati
 fragment LcdOut uberLcdFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]],
                                 device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
                                 device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
-                                texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]]) {
-    ShadeOut shaded = shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, gradients, textures);
+                                device const ShadowSprite *shadowTable [[buffer(8)]], device const float *shadowSprites [[buffer(9)]],
+                                texture2d<float> gradients [[texture(0)]], array<texture2d<float>, 24> textures [[texture(1)]],
+                                constant FrameUniforms &uniforms [[buffer(4)]]) {
+    ShadeOut shaded = shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, shadowTable, shadowSprites,
+                                    gradients, textures, uniforms);
     LcdOut out;
     out.color = shaded.color;
     out.coverage = float4(shaded.coverage, shaded.color.a);

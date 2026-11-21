@@ -6,6 +6,7 @@
 #include "backends/metal/MetalFormantCache.h"
 #include "backends/metal/MetalHalftoneCache.h"
 #include "backends/metal/MetalPathEngine.h"
+#include "backends/metal/MetalShadowCache.h"
 #include "backends/metal/MetalState.h"
 #include "render/RenderSurface.h"
 #include "render/UberBatches.h"
@@ -22,7 +23,7 @@ struct FrameUniforms {
     std::uint32_t textureCount;
     std::uint32_t countFragments;
     std::uint32_t gradientRows;
-    std::uint32_t reserved[2];
+    float origin[2];
 };
 
 struct MetalSurfaceState {
@@ -46,6 +47,7 @@ struct MetalSurfaceState {
     MetalEffects effects;
     MetalFormantCache formants;
     MetalHalftoneCache halftones;
+    MetalShadowCache shadows;
     std::vector<std::pair<std::uint32_t, render::WavetableLine>> wavetableLines;
     [[nodiscard]] const render::WavetableLine *wavetableLine(std::uint32_t index) const noexcept {
         for (const auto &entry : wavetableLines) {
@@ -59,11 +61,27 @@ struct MetalSurfaceState {
     bool bloomActive = false;
     std::vector<std::uint32_t> indexScratch;
     std::vector<float> texelScratch;
+    struct ScratchRange {
+        std::uint32_t opaque;
+        std::uint32_t ordered;
+        std::uint32_t end;
+    };
+    std::vector<hal::Rect> primitiveBounds;
+    std::vector<std::uint32_t> scratchIndices;
+    std::vector<ScratchRange> scratchRanges;
+    id<MTLBuffer> scratchIndexBuffer = nil;
+    std::vector<hal::Rect> damageRects;
+    std::vector<std::array<std::int32_t, 2>> scratchSlots;
+    id<MTLTexture> scratchColor = nil;
+    id<MTLTexture> scratchDepth = nil;
     bool lost = false;
     bool earlyDepth = true;
     bool counting = false;
     std::uint32_t fragments = 0;
     double gpuMilliseconds = 0;
+    std::uint32_t drawCalls = 0;
+    std::size_t uploadBytes = 0;
+    bool submitted = false;
 
     void createTargets();
     void releaseTargets();
@@ -75,9 +93,10 @@ struct MetalSurfaceState {
 
   private:
     void bindUber(id<MTLRenderCommandEncoder> encoder, const FrameUniforms &uniforms);
-    id<MTLRenderCommandEncoder> beginRect(id<MTLCommandBuffer> commands,
-                                          MTLRenderPassDescriptor *pass, hal::Rect rect,
+    id<MTLRenderCommandEncoder> beginPass(id<MTLCommandBuffer> commands,
+                                          MTLRenderPassDescriptor *pass,
                                           const FrameUniforms &uniforms);
     void drawOrdered(id<MTLRenderCommandEncoder> encoder, std::uint32_t from, std::uint32_t to);
+    void encodeScratch(id<MTLCommandBuffer> commands, FrameUniforms uniforms, const float *clear);
 };
 }

@@ -34,8 +34,17 @@ struct FrameUniforms {
     uint textureCount;
     uint countFragments;
     uint gradientRows;
-    uint reserved0;
-    uint reserved1;
+    float2 origin;
+};
+
+struct ShadowSprite {
+    uint offset;
+    uint width;
+    uint height;
+    float step;
+    float2 half_;
+    float radius;
+    float sigma;
 };
 
 struct FrameBuffers {
@@ -44,6 +53,8 @@ struct FrameBuffers {
     device const TransformRecord *transforms;
     device const ClipRecord *clips;
     device const float4 *halftoneCells;
+    device const ShadowSprite *shadowTable;
+    device const float *shadowSprites;
 };
 
 constant uint kindMask = 0xFFu;

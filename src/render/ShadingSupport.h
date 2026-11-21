@@ -28,6 +28,13 @@ template <class Field>
                                    Field &&field) noexcept {
     constexpr double step = 1.0 / 64;
     const double distance = field(local);
+    const double reach = 0.71 * std::sqrt(transform.inverse[0] * transform.inverse[0] +
+                                          transform.inverse[1] * transform.inverse[1] +
+                                          transform.inverse[2] * transform.inverse[2] +
+                                          transform.inverse[3] * transform.inverse[3]);
+    if (std::abs(distance) >= reach) {
+        return distance < 0 ? 1 : 0;
+    }
     const math::Vector2 localGradient{
         (field(local + math::Vector2{step, 0}) - field(local - math::Vector2{step, 0})) /
             (2 * step),

@@ -86,6 +86,11 @@ float evaluateField(int mode, PrimitiveDesc d, device const float *payload, text
 float fieldCoverage(int mode, TransformRecord t, PrimitiveDesc d, device const float *payload,
                     texture2d<float> strip, float2 local) {
     float distance = evaluateField(mode, d, payload, strip, local);
+    float reach = 0.71f * sqrt(t.inverse[0] * t.inverse[0] + t.inverse[1] * t.inverse[1] +
+                               t.inverse[2] * t.inverse[2] + t.inverse[3] * t.inverse[3]);
+    if (abs(distance) >= reach) {
+        return distance < 0.0f ? 1.0f : 0.0f;
+    }
     float2 gradient = float2(
         evaluateField(mode, d, payload, strip, local + float2(gradientStep, 0.0f)) -
             evaluateField(mode, d, payload, strip, local - float2(gradientStep, 0.0f)),

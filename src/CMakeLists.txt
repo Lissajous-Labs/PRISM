@@ -84,3 +84,8 @@ add_library(prism_text STATIC
     text/UtfFastPath.cpp
 )
 target_link_libraries(prism_text PUBLIC prism_render)
+
+add_library(prism_scene STATIC
+    scene/SceneGraph.cpp
+)
+target_link_libraries(prism_scene PUBLIC prism_render)

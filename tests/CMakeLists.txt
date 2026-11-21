@@ -63,6 +63,8 @@ if(APPLE)
     prism_test(typography_gpu gpu/TypographyGpuTests.cpp prism_text prism_backend_metal prism_backend_cpu prism_pixel_oracle)
     set_tests_properties(typography_gpu PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+prism_test(scene_graph unit/SceneGraphTests.cpp prism_scene prism_backend_cpu)
+prism_test(batcher unit/BatcherTests.cpp prism_scene)
 
 add_test(NAME no_comments COMMAND prism_check_comments "${PROJECT_SOURCE_DIR}")
 add_test(NAME comment_scanner COMMAND prism_check_comments --self-test)

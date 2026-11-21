@@ -36,6 +36,7 @@ add_library(prism_render STATIC
     render/GradientTable.cpp
     render/PrimitiveShading.cpp
     render/UberBatches.cpp
+    render/vector/VectorPath.cpp
     "${PRISM_SHADER_SOURCE}"
 )
 target_link_libraries(prism_render PUBLIC prism_hal)

@@ -4,6 +4,7 @@
 #include "render/RenderSurface.h"
 
 #include <memory>
+#include <vector>
 
 namespace prism::backends {
 class CpuRefSurface final : public render::RenderSurface {
@@ -17,10 +18,13 @@ class CpuRefSurface final : public render::RenderSurface {
     [[nodiscard]] bool lost() const noexcept override { return lost_; }
     [[nodiscard]] bool render(const render::FrameRequest &request) override;
     [[nodiscard]] bool readback(std::span<float> rgba) override;
+    [[nodiscard]] bool readbackPresented(std::span<std::uint8_t> rgba,
+                                         std::uint32_t frame) override;
 
   private:
     hal::Extent extent_;
     CpuRaster raster_;
+    std::vector<float> linear_;
     bool lost_ = false;
 };
 

@@ -125,6 +125,9 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
     state->reflect =
         [state->device newComputePipelineStateWithFunction:function(state->library, "reflectLayout")
                                                      error:&error];
+    state->present =
+        [state->device newComputePipelineStateWithFunction:function(state->library, "presentDither")
+                                                     error:&error];
     MTLTextureDescriptor *empty =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
                                                            width:1

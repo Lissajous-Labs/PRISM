@@ -22,6 +22,8 @@ class MetalSurface final : public render::RenderSurface {
     [[nodiscard]] bool lost() const noexcept override;
     [[nodiscard]] bool render(const render::FrameRequest &request) override;
     [[nodiscard]] bool readback(std::span<float> rgba) override;
+    [[nodiscard]] bool readbackPresented(std::span<std::uint8_t> rgba,
+                                         std::uint32_t frame) override;
 
     void setEarlyDepth(bool enabled) noexcept;
     void setFragmentCounting(bool enabled) noexcept;

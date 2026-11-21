@@ -325,4 +325,28 @@ bool MetalSurface::readback(std::span<float> rgba) {
     }
     return true;
 }
+
+bool MetalSurface::readbackPresented(std::span<std::uint8_t> rgba, std::uint32_t frame) {
+    const std::size_t pixels =
+        static_cast<std::size_t>(state_->extent.width) * state_->extent.height;
+    if (state_->lost || rgba.size() != pixels * 4) {
+        return false;
+    }
+    @autoreleasepool {
+        upload(state_->device->device, state_->readback, nullptr, pixels * 4);
+        id<MTLCommandBuffer> commands = [state_->queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+        [encoder setComputePipelineState:state_->device->present];
+        [encoder setTexture:state_->color atIndex:0];
+        [encoder setBuffer:state_->readback offset:0 atIndex:0];
+        [encoder setBytes:&frame length:sizeof(frame) atIndex:1];
+        [encoder dispatchThreads:MTLSizeMake(state_->extent.width, state_->extent.height, 1)
+            threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+        [encoder endEncoding];
+        [commands commit];
+        [commands waitUntilCompleted];
+        std::memcpy(rgba.data(), state_->readback.contents, pixels * 4);
+    }
+    return true;
+}
 }

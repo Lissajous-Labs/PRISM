@@ -1,5 +1,7 @@
 #include "backends/cpu/CpuRefBackend.h"
 
+#include "render/Presentation.h"
+
 namespace prism::backends {
 CpuRefSurface::CpuRefSurface(hal::SurfaceDesc desc) : extent_(desc.extent) {
     raster_.resize(extent_.width, extent_.height);
@@ -35,6 +37,17 @@ bool CpuRefSurface::readback(std::span<float> rgba) {
         rgba[i * 4 + 2] = static_cast<float>(pixels[i].b);
         rgba[i * 4 + 3] = static_cast<float>(pixels[i].a);
     }
+    return true;
+}
+}
+
+namespace prism::backends {
+bool CpuRefSurface::readbackPresented(std::span<std::uint8_t> rgba, std::uint32_t frame) {
+    linear_.resize(rgba.size());
+    if (!readback(linear_)) {
+        return false;
+    }
+    render::presentDithered(linear_, extent_.width, extent_.height, frame, rgba);
     return true;
 }
 }

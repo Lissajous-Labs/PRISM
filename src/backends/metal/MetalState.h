@@ -23,6 +23,7 @@ struct MetalDeviceState {
     id<MTLDepthStencilState> depthTest = nil;
     id<MTLDepthStencilState> depthReset = nil;
     id<MTLComputePipelineState> reflect = nil;
+    id<MTLComputePipelineState> present = nil;
     id<MTLTexture> emptyTexture = nil;
     bool programmableBlending = false;
 };

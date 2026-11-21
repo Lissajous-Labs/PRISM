@@ -20,6 +20,7 @@ set(PRISM_METAL_SHADERS
     "${PROJECT_SOURCE_DIR}/shaders/metal/prism_sdf.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/prism_shading.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/uber_primitive.metal"
+    "${PROJECT_SOURCE_DIR}/shaders/metal/present.metal"
 )
 string(REPLACE ";" "|" PRISM_SHADER_ARGUMENT "${PRISM_METAL_SHADERS}")
 set(PRISM_SHADER_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/ShaderSources.cpp")

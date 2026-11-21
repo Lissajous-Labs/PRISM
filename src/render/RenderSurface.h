@@ -20,6 +20,8 @@ class RenderSurface : public hal::SurfaceBackend {
   public:
     [[nodiscard]] virtual bool render(const FrameRequest &request) = 0;
     [[nodiscard]] virtual bool readback(std::span<float> rgba) = 0;
+    [[nodiscard]] virtual bool readbackPresented(std::span<std::uint8_t> rgba,
+                                                 std::uint32_t frame) = 0;
 };
 
 class RenderDevice : public hal::BackendDevice {

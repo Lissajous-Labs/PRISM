@@ -41,19 +41,25 @@ kernel void spectrogramFft(texture2d<float, access::read> table [[texture(0)]],
                             uint tid [[thread_index_in_threadgroup]], uint group [[threadgroup_position_in_grid]],
                             uint threads [[threads_per_threadgroup]]) {
     threadgroup float2 work[2048];
+    threadgroup float2 twiddle[1024];
     uint frame = u.first + group;
+    uint half_ = u.period / 2u;
+    for (uint i = tid; i < half_; i += threads) {
+        float cosine;
+        float sine = precise::sincos(-2.0f * M_PI_F * float(i) / float(u.period), cosine);
+        twiddle[i] = float2(cosine, sine);
+    }
     for (uint i = tid; i < u.period; i += threads) {
-        uint reversed = 0, value = i;
-        for (uint bit = 0; bit < u.bits; ++bit) { reversed = (reversed << 1u) | (value & 1u); value >>= 1u; }
+        uint reversed = u.bits == 0u ? 0u : reverse_bits(i) >> (32u - u.bits);
         work[reversed] = float2(spectralWarp(table, frame, i, u), 0.0f);
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint span = 2; span <= u.period; span <<= 1u) {
-        uint halfSize = span / 2u;
-        for (uint i = tid; i < u.period / 2u; i += threads) {
-            uint k = i % halfSize, start = (i / halfSize) * span;
-            float angle = -2.0f * M_PI_F * float(k) / float(span);
-            float2 w = float2(cos(angle), sin(angle));
+    for (uint level = 0; level < u.bits; ++level) {
+        uint halfSize = 1u << level;
+        uint stride = u.bits - 1u - level;
+        for (uint i = tid; i < half_; i += threads) {
+            uint k = i & (halfSize - 1u), start = (i >> level) << (level + 1u);
+            float2 w = twiddle[k << stride];
             float2 a = work[start + k], b = work[start + k + halfSize];
             float2 t = float2(w.x * b.x - w.y * b.y, w.x * b.y + w.y * b.x);
             work[start + k] = a + t;

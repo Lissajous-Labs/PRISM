@@ -75,6 +75,14 @@ int main() {
             return 1;
         }
     }
+    double fastest = 1e9;
+    for (int i = 0; i < 50; ++i) {
+        if (!native->prepare(warp) || !native->dispatch()) {
+            return 1;
+        }
+        fastest = std::min(fastest, native->lastGpuMilliseconds());
+    }
+    std::cout << "Full 256-frame rebuild " << fastest << " ms\n";
     const hal::DamageRegion damage({0, 0, frames, rows});
     render::DrawList list;
     list.texturedQuad(render::PrimitiveKind::texturedQuad, {0, 0, frames, rows}, {0, 0, 1, 1}, 0,

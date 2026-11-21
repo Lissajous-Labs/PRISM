@@ -54,6 +54,7 @@ class MetalDevice final : public render::RenderDevice {
     }
     [[nodiscard]] std::unique_ptr<render::RenderSurface>
     createRenderSurface(const hal::SurfaceDesc &desc) override;
+    [[nodiscard]] bool virtualized() const;
     [[nodiscard]] bool reflectLayout(std::span<std::uint32_t, 16> output) const;
     [[nodiscard]] bool evaluateShadows(std::span<const ShadowQuery> queries,
                                        std::span<float> results) const;

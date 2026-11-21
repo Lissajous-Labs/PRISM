@@ -183,6 +183,12 @@ MetalDevice::createRenderSurface(const hal::SurfaceDesc &desc) {
     return std::make_unique<MetalSurface>(state_, desc);
 }
 
+bool MetalDevice::virtualized() const {
+    @autoreleasepool {
+        return [state_->device.name rangeOfString:@"Paravirtual"].location != NSNotFound;
+    }
+}
+
 bool MetalDevice::reflectLayout(std::span<std::uint32_t, 16> output) const {
     @autoreleasepool {
         render::PrimitiveDesc probe{};

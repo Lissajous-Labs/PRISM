@@ -65,7 +65,7 @@ if(APPLE)
         backends/metal/MetalSurface.mm
         backends/metal/MetalSurfaceState.mm
     )
-    target_link_libraries(prism_backend_metal PUBLIC prism_render "-framework Metal" "-framework Foundation")
+    target_link_libraries(prism_backend_metal PUBLIC prism_render "-framework Metal" "-framework Foundation" "-framework QuartzCore")
     target_compile_options(prism_backend_metal PRIVATE -fobjc-arc)
 endif()
 

@@ -33,6 +33,8 @@ class MetalSurface final : public render::RenderSurface {
     [[nodiscard]] bool readbackPresented(std::span<std::uint8_t> rgba,
                                          std::uint32_t frame) override;
 
+    [[nodiscard]] bool presentToLayer(void *layer, std::uint32_t frame);
+    void waitIdle() override;
     void setEarlyDepth(bool enabled) noexcept;
     void setFragmentCounting(bool enabled) noexcept;
     [[nodiscard]] std::uint32_t lastFragmentCount() const noexcept;

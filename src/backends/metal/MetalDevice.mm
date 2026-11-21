@@ -132,6 +132,7 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
         return [state->device newComputePipelineStateWithFunction:function(state->library, name)
                                                             error:nil];
     };
+    state->presentDrawable = compute("presentDrawable");
     state->pathBinCount = compute("pathBinCount");
     state->pathScan = compute("pathScan");
     state->pathBackdrop = compute("pathBackdrop");

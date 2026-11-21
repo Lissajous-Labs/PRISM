@@ -24,6 +24,7 @@ class RenderSurface : public hal::SurfaceBackend {
     [[nodiscard]] virtual bool readback(std::span<float> rgba) = 0;
     [[nodiscard]] virtual bool readbackPresented(std::span<std::uint8_t> rgba,
                                                  std::uint32_t frame) = 0;
+    virtual void waitIdle() {}
 };
 
 class RenderDevice : public hal::BackendDevice {

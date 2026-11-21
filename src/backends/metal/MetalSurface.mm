@@ -4,6 +4,8 @@
 
 #include <cstring>
 
+#import <QuartzCore/CAMetalLayer.h>
+
 namespace prism::backends {
 MetalSurface::MetalSurface(std::shared_ptr<MetalDeviceState> device, hal::SurfaceDesc desc)
     : state_(std::make_unique<MetalSurfaceState>()) {
@@ -117,5 +119,48 @@ bool MetalSurface::readbackPresented(std::span<std::uint8_t> rgba, std::uint32_t
         std::memcpy(rgba.data(), state_->readback.contents, pixels * 4);
     }
     return true;
+}
+
+bool MetalSurface::presentToLayer(void *layer, std::uint32_t frame) {
+    if (state_->lost || layer == nullptr) {
+        return false;
+    }
+    @autoreleasepool {
+        CAMetalLayer *target = (__bridge CAMetalLayer *)layer;
+        target.device = state_->device->device;
+        target.pixelFormat = MTLPixelFormatBGRA8Unorm;
+        target.framebufferOnly = NO;
+        target.drawableSize = CGSizeMake(state_->extent.width, state_->extent.height);
+        id<CAMetalDrawable> drawable = [target nextDrawable];
+        if (drawable == nil) {
+            return false;
+        }
+        id<MTLCommandBuffer> commands = [state_->queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+        [encoder setComputePipelineState:state_->device->presentDrawable];
+        [encoder setTexture:state_->presentedTexture() atIndex:0];
+        [encoder setTexture:drawable.texture atIndex:1];
+        [encoder setBytes:&frame length:sizeof(frame) atIndex:0];
+        [encoder dispatchThreads:MTLSizeMake(drawable.texture.width, drawable.texture.height, 1)
+            threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+        [encoder endEncoding];
+        if (target.presentsWithTransaction) {
+            [commands commit];
+            [commands waitUntilScheduled];
+            [drawable present];
+        } else {
+            [commands presentDrawable:drawable];
+            [commands commit];
+        }
+        return commands.error == nil;
+    }
+}
+
+void MetalSurface::waitIdle() {
+    @autoreleasepool {
+        id<MTLCommandBuffer> fence = [state_->queue commandBuffer];
+        [fence commit];
+        [fence waitUntilCompleted];
+    }
 }
 }

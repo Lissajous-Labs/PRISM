@@ -24,6 +24,7 @@ struct MetalDeviceState {
     id<MTLDepthStencilState> depthReset = nil;
     id<MTLComputePipelineState> reflect = nil;
     id<MTLComputePipelineState> present = nil;
+    id<MTLComputePipelineState> presentDrawable = nil;
     id<MTLComputePipelineState> pathBinCount = nil;
     id<MTLComputePipelineState> pathScan = nil;
     id<MTLComputePipelineState> pathBackdrop = nil;

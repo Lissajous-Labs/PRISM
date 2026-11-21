@@ -29,3 +29,16 @@ kernel void presentDither(texture2d<float, access::read> source [[texture(0)]], 
     float alpha = clamp(floor(color.a * 255.0f + 0.5f), 0.0f, 255.0f);
     output[pixel.y * width + pixel.x] = uchar4(uchar(levels.r), uchar(levels.g), uchar(levels.b), uchar(alpha));
 }
+
+kernel void presentDrawable(texture2d<float, access::read> source [[texture(0)]],
+                            texture2d<float, access::write> target [[texture(1)]], constant uint &frame [[buffer(0)]],
+                            uint2 pixel [[thread_position_in_grid]]) {
+    if (pixel.x >= target.get_width() || pixel.y >= target.get_height()) {
+        return;
+    }
+    uint2 sourcePixel = min(pixel, uint2(source.get_width() - 1, source.get_height() - 1));
+    float4 color = source.read(sourcePixel);
+    float noise = triangularNoise(presentNoise(pixel, frame));
+    float3 levels = clamp(floor(float3(srgbEncode(color.r), srgbEncode(color.g), srgbEncode(color.b)) * 255.0f + 0.5f + noise), 0.0f, 255.0f);
+    target.write(float4(levels / 255.0f, clamp(color.a, 0.0f, 1.0f)), pixel);
+}

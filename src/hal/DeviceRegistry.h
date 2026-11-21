@@ -2,6 +2,7 @@
 
 #include "core/IntrusivePtr.h"
 #include "hal/HalTypes.h"
+#include "hal/SurfaceBackend.h"
 
 #include <array>
 #include <atomic>
@@ -9,9 +10,6 @@
 #include <memory>
 
 namespace prism::hal {
-class SurfaceBackend;
-struct SurfaceDesc;
-
 class BackendDevice {
   public:
     virtual ~BackendDevice() = default;

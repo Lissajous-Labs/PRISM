@@ -18,6 +18,7 @@ target_link_libraries(prism_hal PUBLIC prism_math)
 set(PRISM_METAL_SHADERS
     "${PROJECT_SOURCE_DIR}/shaders/metal/prism_common.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/prism_sdf.metal"
+    "${PROJECT_SOURCE_DIR}/shaders/metal/formant_curve.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/prism_shading.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/spot_coverage.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/halftone_field.metal"
@@ -43,6 +44,7 @@ add_library(prism_render STATIC
     render/GradientTable.cpp
     render/BlueNoise.cpp
     render/HalftoneField.cpp
+    render/FormantCurve.cpp
     render/Wavetable3d.cpp
     render/PrimitiveShading.cpp
     render/UberBatches.cpp
@@ -68,6 +70,7 @@ if(APPLE)
     add_library(prism_backend_metal STATIC
         backends/metal/MetalDevice.mm
         backends/metal/MetalEffects.mm
+        backends/metal/MetalFormantCache.mm
         backends/metal/MetalPathEngine.mm
         backends/metal/MetalSpectrogram.mm
         backends/metal/MetalWavetable3d.mm
@@ -142,6 +145,8 @@ endif()
 add_library(prism_widgets STATIC
     telemetry/LoudnessMeter.cpp
     widgets/GpuFilterCurve.cpp
+    widgets/GpuNoiseEnvelope.cpp
+    widgets/VowelFormants.cpp
     widgets/GpuHalftoneSpectrogram.cpp
     widgets/GpuSpectralMatrix.cpp
     widgets/GpuWavetable3d.cpp

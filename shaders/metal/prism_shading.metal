@@ -35,7 +35,9 @@ float plotField(PrimitiveDesc d, device const float *payload, texture2d<float> s
     LocalBox box = payloadBox(payload, d.payloadOffset);
     float columns = d.params[1];
     float u = clamp((p.x - (box.center.x - box.half_.x)) / (2.0f * box.half_.x), 0.0f, 1.0f);
-    uint column = uint(min(u * columns, columns - 1.0f));
+    int count = int(columns);
+    int raw = int(floor(min(u * columns, columns - 1.0f) + d.params[2]));
+    uint column = uint((raw % count + count) % count);
     float4 band = strip.read(uint2(min(column, strip.get_width() - 1), 0));
     float top = box.center.y + box.half_.y - band.y * 2.0f * box.half_.y;
     float bottom = box.center.y + box.half_.y - band.x * 2.0f * box.half_.y;
@@ -249,6 +251,8 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
         result = shadeTexture(d, frame.payload, t, texture, local);
     } else if (kind == kindHalftone) {
         result.color = shadeHalftoneGpu(d, frame.payload, t, texture, blueNoise, gradients, local);
+    } else if (kind == kindFormant) {
+        result.color = shadeFormantGpu(d, frame.payload, t, local, texture, physical);
     } else if (kind == kindShadow) {
         LocalBox box = payloadBox(frame.payload, d.payloadOffset);
         float blurred = roundedBoxShadow(local - box.center, box.half_, d.params[1], d.params[0]);
@@ -260,6 +264,11 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
     } else {
         float outer = fieldCoverage(fieldPrimitive, t, d, frame.payload, texture, local);
         float4 fill = fillColor(d, frame.payload, gradients, local);
+        if (kind == kindPlot && d.params[3] > 0.0f) {
+            LocalBox box = payloadBox(frame.payload, d.payloadOffset);
+            float u = (local.x - box.center.x + box.half_.x) / (2.0f * box.half_.x);
+            fill *= smoothstep(0.0f, d.params[3], u) * smoothstep(0.0f, d.params[3], 1.0f - u);
+        }
         if (kind == kindRoundedRect && (d.kindFlags & borderFlag) != 0u) {
             float inner = fieldCoverage(fieldInnerBorder, t, d, frame.payload, texture, local);
             result.color = fill * (outer * inner) + decodeColor(d.borderColor) * (outer * (1.0f - inner));

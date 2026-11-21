@@ -1,5 +1,6 @@
 #include "backends/cpu/CpuRaster.h"
 
+#include "render/FormantCurve.h"
 #include "render/PrimitiveShading.h"
 #include "render/ShadingSupport.h"
 #include "render/Wavetable3d.h"
@@ -45,7 +46,7 @@ void CpuRaster::bin(const render::FrameView &frame) {
         };
         Bounds &b = bounds_[i];
         b = {clampTo(std::floor(x0), width_), clampTo(std::floor(y0), height_),
-             clampTo(std::ceil(x1) + 1, width_), clampTo(std::ceil(y1) + 1, height_)};
+             clampTo(std::ceil(x1) + 1, width_), clampTo(std::ceil(y1) + 1, height_), 0};
         if (b.x1 <= b.x0 || b.y1 <= b.y0) {
             continue;
         }
@@ -135,9 +136,10 @@ void CpuRaster::shadeRange(const render::FrameView &frame, hal::Rect rect, const
                 }
                 const render::PrimitiveDesc &desc = frame.primitives[index];
                 render::ShadeResult shaded;
-                if (desc.kind() == render::PrimitiveKind::wavetable3d) {
-                    const auto texel = wavetableImages_[index].at(static_cast<std::uint32_t>(x),
-                                                                  static_cast<std::uint32_t>(y));
+                if (desc.kind() == render::PrimitiveKind::wavetable3d ||
+                    desc.kind() == render::PrimitiveKind::formantCurve) {
+                    const auto texel = analyticImages_[b.analytic].at(
+                        static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y));
                     shaded = {{texel[0], texel[1], texel[2], texel[3]}, {}, false};
                 } else {
                     shaded = render::shadePrimitive(frame, desc, x + 0.5, y + 0.5);
@@ -191,11 +193,22 @@ void CpuRaster::render(const render::FrameView &frame, const hal::DamageRegion &
                        math::PremultipliedColor clear) {
     bin(frame);
     rasterizePaths(frame);
-    wavetableImages_.resize(frame.primitives.size());
+    std::uint32_t analytic = 0;
     for (std::size_t i = 0; i < frame.primitives.size(); ++i) {
-        if (frame.primitives[i].kind() == render::PrimitiveKind::wavetable3d) {
-            render::rasterWavetable3d(frame, frame.primitives[i], wavetableImages_[i], width_,
-                                      height_);
+        const auto kind = frame.primitives[i].kind();
+        if (kind != render::PrimitiveKind::wavetable3d &&
+            kind != render::PrimitiveKind::formantCurve) {
+            continue;
+        }
+        if (analytic == analyticImages_.size()) {
+            analyticImages_.emplace_back();
+        }
+        bounds_[i].analytic = analytic;
+        auto &image = analyticImages_[analytic++];
+        if (kind == render::PrimitiveKind::wavetable3d) {
+            render::rasterWavetable3d(frame, frame.primitives[i], image, width_, height_);
+        } else {
+            render::rasterFormantCurve(frame, frame.primitives[i], image, width_, height_);
         }
     }
     const hal::Rect viewport{0, 0, static_cast<std::int32_t>(width_),

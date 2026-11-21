@@ -14,6 +14,10 @@ struct HalftoneStyle {
     float screenMix = 0.85f;
     float thresholdSpread = 0.38f;
     float thresholdSoftness = 0.18f;
+    float cursorBoost = 0.35f;
+    float cursorSigma = 0.035f;
+    bool cleanBackdrop = false;
+    bool pairedSpots = false;
 };
 [[nodiscard]] inline render::HalftonePayload halftonePayload(render::RectF rect,
                                                              const HalftoneStyle &style,
@@ -42,8 +46,8 @@ struct HalftoneStyle {
     h.screenParams[1] = style.thresholdSpread;
     h.screenParams[2] = style.thresholdSoftness;
     h.screenParams[3] = 1.15f;
-    h.cursorParams[1] = 0.35f;
-    h.cursorParams[2] = 0.035f;
+    h.cursorParams[1] = style.cursorBoost;
+    h.cursorParams[2] = style.cursorSigma;
     h.cursorParams[3] = 1;
     h.paletteRow = palette;
     h.blueNoiseSlot = noise;

@@ -54,10 +54,10 @@ telemetry::Biquad designBiquad(FilterShape shape, double sampleRate, double freq
 }
 
 bool FilterResponse::add(const telemetry::Biquad &section) {
-    if (sections_.size() >= maxSections) {
+    if (count_ >= maxSections) {
         return false;
     }
-    sections_.push_back(section);
+    sections_[count_++] = section;
     return true;
 }
 
@@ -65,9 +65,10 @@ std::complex<double> FilterResponse::response(double frequency) const noexcept {
     const double w = 2 * std::numbers::pi * frequency / sampleRate_;
     const std::complex<double> z1 = std::polar(1.0, -w);
     const std::complex<double> z2 = z1 * z1;
-    std::complex<double> total = 1;
-    for (const telemetry::Biquad &s : sections_) {
-        total *= (s.b0 + s.b1 * z1 + s.b2 * z2) / (1.0 + s.a1 * z1 + s.a2 * z2);
+    std::complex<double> total = parallel_ ? 0 : 1;
+    for (const telemetry::Biquad &s : sections()) {
+        const auto value = (s.b0 + s.b1 * z1 + s.b2 * z2) / (1.0 + s.a1 * z1 + s.a2 * z2);
+        total = parallel_ ? total + value : total * value;
     }
     return total;
 }
@@ -78,20 +79,37 @@ double FilterResponse::magnitudeDb(double frequency) const noexcept {
 
 void GpuFilterCurve::build(const FilterResponse &response, double lowFrequency,
                            double highFrequency, double minDb, double maxDb) {
-    const auto frequency = [&](double t) {
-        return lowFrequency * std::pow(highFrequency / lowFrequency, t);
-    };
-    const auto unit = [&](double db) {
-        return static_cast<float>(std::clamp((db - minDb) / (maxDb - minDb), 0.0, 1.0));
-    };
-    double left = response.magnitudeDb(frequency(0));
-    for (std::uint32_t x = 0; x < columns_; ++x) {
-        const double center = response.magnitudeDb(frequency((x + 0.5) / columns_));
-        const double right = response.magnitudeDb(frequency((x + 1.0) / columns_));
-        strip_[x * 2] = unit(std::min({left, center, right}));
-        strip_[x * 2 + 1] = unit(std::max({left, center, right}));
-        left = right;
+    payload_.domain[0] = static_cast<float>(std::log(lowFrequency));
+    payload_.domain[1] = static_cast<float>(std::log(highFrequency / lowFrequency));
+    payload_.domain[2] = static_cast<float>(2 * std::numbers::pi / response.sampleRate());
+    payload_.domain[3] = static_cast<float>(minDb);
+    dbRange_ = static_cast<float>(maxDb - minDb);
+    payload_.parallel = response.parallel() ? 1 : 0;
+    payload_.sections = static_cast<std::uint32_t>(response.sections().size());
+    for (std::size_t i = 0; i < response.sections().size(); ++i) {
+        const auto &s = response.sections()[i];
+        payload_.coefficients[i][0] = static_cast<float>(s.b0 + s.b1 + s.b2);
+        payload_.coefficients[i][1] = static_cast<float>(s.b0 + s.b2);
+        payload_.coefficients[i][2] = static_cast<float>(s.b0 - s.b2);
+        payload_.coefficients[i][3] = static_cast<float>(1 + s.a1 + s.a2);
+        payload_.coefficients[i][4] = static_cast<float>(1 - s.a2);
     }
+}
+
+void GpuFilterCurve::draw(render::DrawList &list, render::RectF rect, float thickness,
+                          std::uint32_t color, const FilterCurveStyle &style) const {
+    auto h = payload_;
+    h.rect[0] = rect.x0;
+    h.rect[1] = rect.y0;
+    h.rect[2] = rect.x1;
+    h.rect[3] = rect.y1;
+    h.style[0] = thickness;
+    h.style[1] = style.haloSigma;
+    h.style[2] = style.haloGain;
+    h.style[3] = style.fillAlpha;
+    h.fillDecay = style.fillDecay;
+    h.zeroLineAlpha = style.zeroLineAlpha;
+    list.formantCurve(h, dbRange_, color);
 }
 
 }

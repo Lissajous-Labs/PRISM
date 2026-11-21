@@ -86,7 +86,8 @@ void GpuHalftoneSpectrogram::draw(render::DrawList &list, render::RectF rect,
                                   std::uint32_t noiseSlot, float position, unsigned unison,
                                   const HalftoneStyle &style) const {
     auto h = halftonePayload(rect, style, paletteRow, noiseSlot);
-    h.modeFlags = render::halftoneFlags::summedArea | render::halftoneFlags::cursor;
+    h.modeFlags = render::halftoneFlags::summedArea | render::halftoneFlags::cursor |
+                  (style.cleanBackdrop ? render::halftoneFlags::cleanBackdrop : 0u);
     h.cursorParams[0] = position;
     h.cursorParams[3] = static_cast<float>(std::clamp(unison, 1u, 16u));
     list.halftoneField(h, fieldSlot);

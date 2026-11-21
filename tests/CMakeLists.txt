@@ -35,6 +35,7 @@ prism_test(halftone_radiometry unit/HalftoneRadiometryTests.cpp prism_backend_cp
 prism_test(halftone_animation unit/HalftoneAnimationTests.cpp prism_backend_cpu)
 prism_test(spectral_models unit/SpectralModelTests.cpp prism_widgets)
 prism_test(wavetable3d_math unit/Wavetable3dMathTests.cpp prism_widgets)
+prism_test(formant_model unit/FormantModelTests.cpp prism_widgets)
 prism_test(damage_region unit/DamageRegionTests.cpp prism_hal)
 prism_test(frame_graph unit/FrameGraphTests.cpp prism_hal)
 prism_test(device_topology unit/DeviceTopologyTests.cpp prism_hal Threads::Threads)

@@ -1,13 +1,14 @@
 #pragma once
 
 #include "render/DrawList.h"
+#include "render/FormantCurve.h"
 #include "render/FrameView.h"
 #include "telemetry/LoudnessMeter.h"
 
+#include <array>
 #include <complex>
 #include <cstdint>
 #include <span>
-#include <vector>
 
 namespace prism::widgets {
 enum class FilterShape : std::uint8_t { lowpass, highpass, bandpass, peaking, lowShelf, highShelf };
@@ -22,7 +23,13 @@ class FilterResponse {
     explicit FilterResponse(double sampleRate) : sampleRate_(sampleRate) {}
 
     bool add(const telemetry::Biquad &section);
-    void clear() noexcept { sections_.clear(); }
+    void clear() noexcept { count_ = 0; }
+    void setParallel(bool value) noexcept { parallel_ = value; }
+    [[nodiscard]] bool parallel() const noexcept { return parallel_; }
+    [[nodiscard]] double sampleRate() const noexcept { return sampleRate_; }
+    [[nodiscard]] std::span<const telemetry::Biquad> sections() const noexcept {
+        return std::span(sections_).first(count_);
+    }
     [[nodiscard]] std::complex<double> response(double frequency) const noexcept;
     [[nodiscard]] double magnitudeDb(double frequency) const noexcept;
     [[nodiscard]] double phase(double frequency) const noexcept {
@@ -31,26 +38,29 @@ class FilterResponse {
 
   private:
     double sampleRate_;
-    std::vector<telemetry::Biquad> sections_;
+    std::array<telemetry::Biquad, maxSections> sections_{};
+    std::size_t count_ = 0;
+    bool parallel_ = false;
+};
+
+struct FilterCurveStyle {
+    float haloSigma = 2.3f;
+    float haloGain = 0.15f;
+    float fillAlpha = 0.14f;
+    float fillDecay = 3.0f;
+    float zeroLineAlpha = 0.0f;
 };
 
 class GpuFilterCurve {
   public:
-    explicit GpuFilterCurve(std::uint32_t columns)
-        : columns_(columns), strip_(static_cast<std::size_t>(columns) * 2) {}
-
     void build(const FilterResponse &response, double lowFrequency, double highFrequency,
                double minDb, double maxDb);
-    [[nodiscard]] render::TextureView strip() const noexcept { return {columns_, 1, 2, strip_}; }
-    [[nodiscard]] std::span<const float> bands() const noexcept { return strip_; }
-    void draw(render::DrawList &list, render::RectF rect, std::uint32_t slot, float thickness,
-              std::uint32_t color) const {
-        list.plotStrip(rect, slot, columns_, thickness, color);
-    }
+    void draw(render::DrawList &list, render::RectF rect, float thickness, std::uint32_t color,
+              const FilterCurveStyle &style = {}) const;
 
   private:
-    std::uint32_t columns_;
-    std::vector<float> strip_;
+    render::FormantPayload payload_{};
+    float dbRange_ = 48;
 };
 
 }

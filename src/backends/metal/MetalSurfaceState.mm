@@ -73,6 +73,7 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
             textures[slot] = nil;
         }
     }
+    formants.prepare(*device, view, primitives, extent);
 }
 
 void MetalSurfaceState::bindUber(id<MTLRenderCommandEncoder> encoder,
@@ -93,6 +94,11 @@ void MetalSurfaceState::bindUber(id<MTLRenderCommandEncoder> encoder,
                           atIndex:slot + 1];
         [encoder setFragmentTexture:(textures[slot] ? textures[slot] : device->emptyTexture)
                             atIndex:slot + 1];
+    }
+    for (std::size_t slot = 0; slot < textureSlots; ++slot) {
+        const auto texture = formants.texture(slot);
+        [encoder setFragmentTexture:(texture ? texture : device->emptyTexture) atIndex:9 + slot];
+        [encoder setVertexTexture:(texture ? texture : device->emptyTexture) atIndex:9 + slot];
     }
 }
 
@@ -161,6 +167,7 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
         counting ? 1u : 0u,
         0,
         {0, 0}};
+    formants.encode(*device, commands, primitives, payload, transforms);
     paths.prepare(*device, commands, request.view, extent);
     MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
     pass.colorAttachments[0].texture = color;

@@ -9,7 +9,7 @@
 
 namespace prism::backends {
 inline constexpr std::size_t uberPipelineCount = 6;
-inline constexpr std::size_t textureSlots = 8;
+inline constexpr std::size_t textureSlots = 16;
 
 struct MetalDeviceState {
     id<MTLDevice> device = nil;
@@ -41,6 +41,7 @@ struct MetalDeviceState {
     id<MTLComputePipelineState> bloomPrefilter = nil;
     id<MTLComputePipelineState> bloomComposite = nil;
     id<MTLComputePipelineState> shadowProbe = nil;
+    id<MTLComputePipelineState> formantColumns = nil;
     id<MTLTexture> emptyTexture = nil;
     bool programmableBlending = false;
 };

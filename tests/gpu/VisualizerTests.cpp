@@ -40,7 +40,7 @@ int main() {
     widgets::FilterResponse response(rate);
     response.add(widgets::designBiquad(widgets::FilterShape::peaking, rate, 1200, 1.5, 8));
     response.add(widgets::designBiquad(widgets::FilterShape::highpass, rate, 80, 0.7));
-    widgets::GpuFilterCurve curve(256);
+    widgets::GpuFilterCurve curve;
     curve.build(response, 20, 20000, -24, 24);
     telemetry::LoudnessMeter meter(rate);
     meter.process(signal.data(), signal.data(), signal.size());
@@ -49,15 +49,15 @@ int main() {
         render::GradientStop{0, render::packColor(255, 120, 40, 230)},
         render::GradientStop{1, render::packColor(40, 60, 255, 40)}};
     const auto row = gradients.add(stops, render::GradientSpace::oklab);
-    const std::array<render::TextureView, 4> textures{scope.strip(), spectrum.strip(),
-                                                      spectrum.waterfall(), curve.strip()};
+    const std::array<render::TextureView, 3> textures{scope.strip(), spectrum.strip(),
+                                                      spectrum.waterfall()};
     render::DrawList list;
     list.roundedRect({0, 0, 512, 256}, {}, render::packColor(14, 16, 22, 255));
     scope.draw(list, {8, 8, 248, 120}, 0, 1.5f, render::packColor(80, 255, 160, 255));
     spectrum.draw(list, {264, 8, 504, 120}, 1, row, render::packColor(255, 255, 255, 255),
                   render::packColor(255, 255, 255, 255));
     spectrum.drawWaterfall(list, {8, 136, 248, 248}, 2, render::packColor(255, 255, 255, 255));
-    curve.draw(list, {264, 136, 472, 248}, 3, 2, render::packColor(255, 200, 60, 255));
+    curve.draw(list, {264, 136, 472, 248}, 2, render::packColor(255, 200, 60, 255));
     widgets::drawLoudnessMeter(
         list, {480, 136, 504, 248}, meter.reading(), -1,
         {-60, 0, 6, render::packColor(30, 30, 36, 255), render::packColor(60, 220, 120, 255),

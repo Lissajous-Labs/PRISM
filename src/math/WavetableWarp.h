@@ -107,14 +107,16 @@ struct WavetableCamera {
     double inverseDistance = 0;
     double amplitudeScale = 0.58;
     double padding = 0.08;
+    double depthScale = 1;
     struct Point {
         double x, y, z;
     };
     [[nodiscard]] Point rotate(double x, double y, double z) const noexcept {
         const double cy = std::cos(yaw), sy = std::sin(yaw);
         const double cp = std::cos(pitch), sp = std::sin(pitch);
-        const double xr = cy * x + sy * z;
-        const double zr = -sy * x + cy * z;
+        const double sz = z * depthScale;
+        const double xr = cy * x + sy * sz;
+        const double zr = -sy * x + cy * sz;
         return {xr, cp * amplitudeScale * y - sp * zr, sp * amplitudeScale * y + cp * zr};
     }
     [[nodiscard]] Vector2 project(double x, double y, double z) const noexcept {
@@ -132,7 +134,7 @@ struct WavetableCamera {
         return (1 - 2 * padding) * std::min(width / (2 * ux), height / (2 * uy));
     }
     [[nodiscard]] bool descendingSlices() const noexcept {
-        return std::cos(pitch) * std::cos(yaw) >= 0;
+        return std::cos(pitch) * std::cos(yaw) < 0;
     }
 };
 }

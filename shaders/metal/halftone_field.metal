@@ -96,27 +96,46 @@ float3 shadeHalftoneCellGpu(PrimitiveDesc d, device const float *payload, Transf
         return float3(0.0f);
     }
     float energy = 0.0f, ridge = 0.0f;
+    bool clean = (mode & 32u) != 0u;
+    bool paired = (mode & 64u) != 0u;
     if ((mode & 1u) != 0u) {
         float u = (center.x - h[0]) / (h[2] - h[0]);
         float4 band = sampleBilinear(texture, float2(u, 0.5f));
         float rows = (h[3] - h[1]) / pitch.y;
-        float j = floor((h[3] - center.y) / pitch.y), rh = band.x * rows;
-        float fill = clamp(rh - j, 0.0f, 1.0f);
-        float xi = clamp((j + 0.5f) / max(rh, 1.0f), 0.0f, 1.0f);
-        float body = fill * (0.14f + 0.86f * pow(xi, 1.65f)) * (0.32f + 0.68f * pow(max(0.0f, band.x), 0.55f));
-        float cap = 0.48f * smoothstep(0.0f, 0.02f, band.x) * exp(-pow(j + 1.0f - rh, 2.0f) / (2.0f * 0.55f * 0.55f));
-        float peak = 0.96f * smoothstep(0.0f, 0.04f, band.y) * exp(-pow(j + 1.0f - band.y * rows, 2.0f) / (2.0f * 0.36f * 0.36f));
-        float node = fill * 0.55f * band.z * exp(-pow(j + 0.5f - 0.62f * rh, 2.0f) / 0.72f);
-        energy = clamp(max(body + cap + node, peak), 0.0f, 1.0f);
+        float j = floor((h[3] - center.y) / pitch.y);
+        if (clean) {
+            float topRow = floor(clamp(band.x, 0.0f, 1.0f) * rows - 1e-4f);
+            float peakRow = floor(clamp(band.y, 0.0f, 1.0f) * rows - 1e-4f);
+            float depth = topRow - j;
+            float peakGap = abs(j - peakRow);
+            float body = 0.0f;
+            if (band.x > 0.01f && depth >= 0.0f) {
+                body = depth < 0.5f   ? 0.95f
+                       : depth < 1.5f ? 0.44f
+                       : depth < 2.5f ? 0.34f
+                                      : 0.17f;
+            }
+            float peak = (band.y > 0.02f && peakGap < 0.5f) ? 0.96f : 0.0f;
+            energy = clamp(max(body, peak), 0.0f, 1.0f);
+        } else {
+            float rh = band.x * rows;
+            float fill = clamp(rh - j, 0.0f, 1.0f);
+            float xi = clamp((j + 0.5f) / max(rh, 1.0f), 0.0f, 1.0f);
+            float body = fill * (0.14f + 0.86f * pow(xi, 1.65f)) * (0.32f + 0.68f * pow(max(0.0f, band.x), 0.55f));
+            float cap = 0.48f * smoothstep(0.0f, 0.02f, band.x) * exp(-pow(j + 1.0f - rh, 2.0f) / (2.0f * 0.55f * 0.55f));
+            float peak = 0.96f * smoothstep(0.0f, 0.04f, band.y) * exp(-pow(j + 1.0f - band.y * rows, 2.0f) / (2.0f * 0.36f * 0.36f));
+            float node = fill * 0.55f * band.z * exp(-pow(j + 0.5f - 0.62f * rh, 2.0f) / 0.72f);
+            energy = clamp(max(body + cap + node, peak), 0.0f, 1.0f);
+        }
         ridge = energy;
     } else {
         energy = halftoneEnergy(texture, h, center, pitch, mode);
         ridge = 0.25f * halftoneEnergy(texture, h, center - b1, pitch, mode) + 0.5f * energy +
                 0.25f * halftoneEnergy(texture, h, center + b1, pitch, mode);
-        if ((mode & 8u) != 0u) {
+        if ((mode & 8u) != 0u && h[25] > 0.0f) {
             float u = (center.x - h[0]) / (h[2] - h[0]);
-            float delta = (u - h[24]) / h[26];
-            energy = min(1.0f, energy * (1.0f + h[25] * exp(-0.5f * delta * delta)));
+            float cursorDelta = (u - h[24]) / h[26];
+            energy = min(1.0f, energy * (1.0f + h[25] * exp(-0.5f * cursorDelta * cursorDelta)));
         }
     }
     float threshold = 0.0f;
@@ -126,16 +145,37 @@ float3 shadeHalftoneCellGpu(PrimitiveDesc d, device const float *payload, Transf
     float tone = halftoneIgnition(energy, threshold, h[20], h[21], h[22]);
     float widthTone = halftoneIgnition(ridge, threshold, h[20], h[21], h[22]);
     float fillX = h[18] + (1.0f - h[18]) * pow(widthTone, h[19]);
-    float spot = eta > 0.0f ? eta * halftoneCoverage(t, p, center, axis, halfSize, fillX, h[16], h[17], mode) : 0.0f;
-    float grid = eta > 0.0f ? eta * halftoneCoverage(t, p, center, axis, halfSize, 1.0f, h[16], h[17], mode) : 0.0f;
-    if (primary) {
-        spot += (1.0f - eta) * halftoneArea(halfSize, fillX, h[16], area, d.params[0], mode);
-        grid += (1.0f - eta) * halftoneArea(halfSize, 1.0f, h[16], area, d.params[0], mode);
+    float spot = 0.0f;
+    float grid = 0.0f;
+    if (paired) {
+        float subHalfX = halfSize.x * 0.425f;
+        float offset = halfSize.x - subHalfX;
+        float2 subHalf = float2(subHalfX, halfSize.y);
+        float2 left = center - axis * offset;
+        float2 right = center + axis * offset;
+        if (eta > 0.0f) {
+            spot = eta * min(1.0f, halftoneCoverage(t, p, left, axis, subHalf, fillX, h[16], h[17], mode) +
+                                   halftoneCoverage(t, p, right, axis, subHalf, fillX, h[16], h[17], mode));
+            grid = eta * min(1.0f, halftoneCoverage(t, p, left, axis, subHalf, 1.0f, h[16], h[17], mode) +
+                                   halftoneCoverage(t, p, right, axis, subHalf, 1.0f, h[16], h[17], mode));
+        }
+        if (primary) {
+            spot += (1.0f - eta) * 2.0f * halftoneArea(subHalf, fillX, h[16], area, d.params[0], mode);
+            grid += (1.0f - eta) * 2.0f * halftoneArea(subHalf, 1.0f, h[16], area, d.params[0], mode);
+        }
+    } else {
+        spot = eta > 0.0f ? eta * halftoneCoverage(t, p, center, axis, halfSize, fillX, h[16], h[17], mode) : 0.0f;
+        grid = eta > 0.0f ? eta * halftoneCoverage(t, p, center, axis, halfSize, 1.0f, h[16], h[17], mode) : 0.0f;
+        if (primary) {
+            spot += (1.0f - eta) * halftoneArea(halfSize, fillX, h[16], area, d.params[0], mode);
+            grid += (1.0f - eta) * halftoneArea(halfSize, 1.0f, h[16], area, d.params[0], mode);
+        }
     }
     float position = tone * 255.0f;
     uint lower = uint(position), upper = min(lower + 1u, 255u);
     float3 emit = mix(gradients.read(uint2(lower, d.gradientOffset)).rgb, gradients.read(uint2(upper, d.gradientOffset)).rgb, position - float(lower));
-    float3 background = float3(0.0033465358f, 0.0036765073f, 0.0043914420f), gridColor = float3(0.0095f, 0.0072f, 0.0060f);
+    float3 background = clean ? float3(0.003945f) : float3(0.0033465358f, 0.0036765073f, 0.0043914420f);
+    float3 gridColor = clean ? background : float3(0.0095f, 0.0072f, 0.0060f);
     return grid * (gridColor - background) + spot * (emit - gridColor);
 }
 
@@ -143,6 +183,7 @@ float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, TransformR
                         texture2d<float> texture, texture2d<float> blueNoise, texture2d<float> gradients, float2 p) {
     device const float *h = payload + d.payloadOffset;
     uint mode = as_type<uint>(h[28]);
+    bool clean = (mode & 32u) != 0u;
     float2 b1 = float2(h[4], h[5]), b2 = float2(h[6], h[7]), origin = float2(h[12], h[13]);
     float2 relative = p - origin;
     float det = b1.x * b2.y - b1.y * b2.x;
@@ -163,8 +204,8 @@ float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, TransformR
     float2 center = origin + b1 * (cell.x + shift) + b2 * (cell.y + shift);
     float2 physicalB1 = float2(t.forward[0] * b1.x + t.forward[2] * b1.y, t.forward[1] * b1.x + t.forward[3] * b1.y);
     float2 physicalB2 = float2(t.forward[0] * b2.x + t.forward[2] * b2.y, t.forward[1] * b2.x + t.forward[3] * b2.y);
-    float eta = smoothstep(3.6f, 7.2f, min(length(physicalB1), length(physicalB2)));
-    float3 color = float3(0.0033465358f, 0.0036765073f, 0.0043914420f);
+    float eta = smoothstep(2.72f, 2.98f, min(length(physicalB1), length(physicalB2)));
+    float3 color = clean ? float3(0.003945f) : float3(0.0033465358f, 0.0036765073f, 0.0043914420f);
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
             color += shadeHalftoneCellGpu(d, payload, t, texture, blueNoise, gradients, p,
@@ -174,24 +215,43 @@ float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, TransformR
     }
     if ((mode & 8u) != 0u) {
         float sx = length(float2(t.forward[0], t.forward[1]));
+        float sy = length(float2(t.forward[2], t.forward[3]));
         float x = h[0] + h[24] * (h[2] - h[0]);
         float snapped = (floor(x * sx) + 0.5f) / sx;
         float cursor = boxCoverage(abs(p.x - snapped) * sx - 0.75f, float2(1.0f, 0.0f));
-        float2 a = float2(snapped - 4.0f / sx, h[1]), b = float2(snapped + 4.0f / sx, h[1]), c = float2(snapped, h[1] + 5.0f / sx);
-        float capD = sdRoundedTriangle(p, a, b, c, 0.4f / sx);
         float2 dx = float2(gradientStep, 0.0f), dy = float2(0.0f, gradientStep);
-        float2 grad = float2(sdRoundedTriangle(p + dx, a, b, c, 0.4f / sx) - sdRoundedTriangle(p - dx, a, b, c, 0.4f / sx),
-                             sdRoundedTriangle(p + dy, a, b, c, 0.4f / sx) - sdRoundedTriangle(p - dy, a, b, c, 0.4f / sx)) / (2.0f * gradientStep);
-        float2 physical = float2(t.inverse[0] * grad.x + t.inverse[1] * grad.y, t.inverse[2] * grad.x + t.inverse[3] * grad.y);
-        float norm = length(physical);
-        float cap = norm > 1e-12f ? boxCoverage(capD / norm, physical) : (capD <= 0.0f ? 1.0f : 0.0f);
-        cursor = max(cursor, cap);
-        int voices = clamp(int(h[27]), 1, 16);
-        for (int v = 0; v < voices && voices > 1; ++v) {
-            float voiceX = snapped + (float(v) / float(voices - 1) - 0.5f) * 0.05f * (h[2] - h[0]);
-            cursor = max(cursor, 0.18f * boxCoverage(abs(p.x - voiceX) * sx - 0.35f, float2(1.0f, 0.0f)));
+        if (clean) {
+            float topY = h[1] + 12.0f / sy;
+            float botY = h[3] - 10.0f / sy;
+            cursor *= boxCoverage(max(topY - p.y, p.y - botY) * sy, float2(0.0f, 1.0f));
+            float2 a = float2(snapped - 4.0f / sx, h[1] + 9.0f / sy);
+            float2 b = float2(snapped + 4.0f / sx, h[1] + 9.0f / sy);
+            float2 c = float2(snapped, h[1] + 15.5f / sy);
+            float capD = sdRoundedTriangle(p, a, b, c, 0.3f / sx);
+            float2 grad = float2(sdRoundedTriangle(p + dx, a, b, c, 0.3f / sx) - sdRoundedTriangle(p - dx, a, b, c, 0.3f / sx),
+                                 sdRoundedTriangle(p + dy, a, b, c, 0.3f / sx) - sdRoundedTriangle(p - dy, a, b, c, 0.3f / sx)) / (2.0f * gradientStep);
+            float2 physical = float2(t.inverse[0] * grad.x + t.inverse[1] * grad.y, t.inverse[2] * grad.x + t.inverse[3] * grad.y);
+            float norm = length(physical);
+            float cap = norm > 1e-12f ? boxCoverage(capD / norm, physical) : (capD <= 0.0f ? 1.0f : 0.0f);
+            cursor = max(cursor, cap);
+            float shade = cap > 0.5f ? 0.46f : 0.36f;
+            color = mix(color, float3(shade), cursor);
+        } else {
+            float2 a = float2(snapped - 4.0f / sx, h[1]), b = float2(snapped + 4.0f / sx, h[1]), c = float2(snapped, h[1] + 5.0f / sx);
+            float capD = sdRoundedTriangle(p, a, b, c, 0.4f / sx);
+            float2 grad = float2(sdRoundedTriangle(p + dx, a, b, c, 0.4f / sx) - sdRoundedTriangle(p - dx, a, b, c, 0.4f / sx),
+                                 sdRoundedTriangle(p + dy, a, b, c, 0.4f / sx) - sdRoundedTriangle(p - dy, a, b, c, 0.4f / sx)) / (2.0f * gradientStep);
+            float2 physical = float2(t.inverse[0] * grad.x + t.inverse[1] * grad.y, t.inverse[2] * grad.x + t.inverse[3] * grad.y);
+            float norm = length(physical);
+            float cap = norm > 1e-12f ? boxCoverage(capD / norm, physical) : (capD <= 0.0f ? 1.0f : 0.0f);
+            cursor = max(cursor, cap);
+            int voices = clamp(int(h[27]), 1, 16);
+            for (int v = 0; v < voices && voices > 1; ++v) {
+                float voiceX = snapped + (float(v) / float(voices - 1) - 0.5f) * 0.05f * (h[2] - h[0]);
+                cursor = max(cursor, 0.18f * boxCoverage(abs(p.x - voiceX) * sx - 0.35f, float2(1.0f, 0.0f)));
+            }
+            color = mix(color, float3(0.686685f, 0.715694f, 0.760525f), cursor);
         }
-        color = mix(color, float3(0.686685f, 0.715694f, 0.760525f), cursor);
     }
     return float4(color, 1.0f);
 }

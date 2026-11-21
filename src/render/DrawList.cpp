@@ -158,6 +158,18 @@ void DrawList::wavetable3d(const Wavetable3dUniforms &uniforms, std::uint32_t te
     desc.params[1] = static_cast<float>(uniforms.slices + 1 + uniforms.voices);
 }
 
+void DrawList::formantCurve(const FormantPayload &curve, float dbRange, std::uint32_t color) {
+    if (curve.sections > 16 || !(dbRange > 0)) {
+        throw std::invalid_argument("Invalid formant response dimensions");
+    }
+    auto &desc = emit(PrimitiveKind::formantCurve,
+                      {curve.rect[0], curve.rect[1], curve.rect[2], curve.rect[3]}, color);
+    desc.payloadOffset = static_cast<std::uint32_t>(payload_.size());
+    payload_.resize(payload_.size() + sizeof(curve) / sizeof(float));
+    std::memcpy(payload_.data() + desc.payloadOffset, &curve, sizeof(curve));
+    desc.params[0] = dbRange;
+}
+
 void DrawList::roundedRect(RectF rect, math::CornerRadii radii, std::uint32_t color,
                            std::optional<BorderStyle> border) {
     const math::Vector2 half{(rect.x1 - rect.x0) / 2.0, (rect.y1 - rect.y0) / 2.0};
@@ -258,11 +270,13 @@ void DrawList::texturedQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint3
 }
 
 void DrawList::plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
-                         std::uint32_t color) {
+                         std::uint32_t color, float scrollColumns, float edgeFade) {
     PrimitiveDesc &desc = emit(PrimitiveKind::plotStrip, rect, color);
     desc.auxHandle = strip;
     desc.params[0] = thickness;
     desc.params[1] = static_cast<float>(columns);
+    desc.params[2] = scrollColumns;
+    desc.params[3] = edgeFade;
     desc.payloadOffset = appendPayload({rect.x0, rect.y0, rect.x1, rect.y1});
 }
 

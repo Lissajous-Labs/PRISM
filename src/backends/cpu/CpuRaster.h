@@ -35,6 +35,7 @@ class CpuRaster {
         std::int32_t y0;
         std::int32_t x1;
         std::int32_t y1;
+        std::uint32_t analytic;
     };
 
     struct Segment {
@@ -58,7 +59,7 @@ class CpuRaster {
     std::vector<std::vector<float>> pathCoverage_;
     render::FloatImage cropImage_;
     render::FloatImage blurredImage_;
-    std::vector<render::FloatImage> wavetableImages_;
+    std::vector<render::FloatImage> analyticImages_;
 
     void bin(const render::FrameView &frame);
     void rasterizePaths(const render::FrameView &frame);

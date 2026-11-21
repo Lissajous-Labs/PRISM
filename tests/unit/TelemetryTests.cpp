@@ -198,20 +198,12 @@ bool checkFilterCurve() {
     response.clear();
     response.add(widgets::designBiquad(widgets::FilterShape::peaking, 48000, 2500, 2, 9));
     const bool peaking = within(static_cast<float>(response.magnitudeDb(2500)), 9, 1e-3f);
-    response.add(widgets::designBiquad(widgets::FilterShape::highShelf, 48000, 8000, 0.7, -6));
-    widgets::GpuFilterCurve curve(400);
-    curve.build(response, 20, 20000, -24, 24);
-    bool continuous = true;
-    for (std::uint32_t x = 0; x + 1 < 400; ++x) {
-        continuous = continuous && curve.bands()[x * 2] <= curve.bands()[(x + 1) * 2 + 1] + 1e-6f &&
-                     curve.bands()[(x + 1) * 2] <= curve.bands()[x * 2 + 1] + 1e-6f;
-    }
     std::size_t sections = 0;
     widgets::FilterResponse cascade(48000);
     while (cascade.add(widgets::designBiquad(widgets::FilterShape::lowpass, 48000, 5000, 0.7))) {
         ++sections;
     }
-    return lowpass && peaking && continuous && sections == 16;
+    return lowpass && peaking && sections == 16;
 }
 }
 

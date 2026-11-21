@@ -20,10 +20,11 @@ enum class PrimitiveKind : std::uint8_t {
     texturedQuad = 10,
     plotStrip = 11,
     halftoneField = 12,
-    wavetable3d = 13
+    wavetable3d = 13,
+    formantCurve = 14
 };
 
-inline constexpr std::uint32_t primitiveKindCount = 14;
+inline constexpr std::uint32_t primitiveKindCount = 15;
 enum class GradientShape : std::uint8_t { linear = 0, radial = 1, conic = 2 };
 
 namespace flags {

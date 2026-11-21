@@ -4,6 +4,7 @@
 #include "math/Affine2D.h"
 #include "math/SdfCurves.h"
 #include "math/SdfShapes.h"
+#include "render/FormantCurve.h"
 #include "render/FrameRecords.h"
 #include "render/HalftoneField.h"
 #include "render/PrimitiveDesc.h"
@@ -64,10 +65,11 @@ class DrawList {
     void strokePath(const VectorPath &path, const StrokeStyle &style, std::uint32_t color);
     void backdropBlur(RectF rect, math::CornerRadii radii, float sigma);
     void plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
-                   std::uint32_t color);
+                   std::uint32_t color, float scrollColumns = 0, float edgeFade = 0);
     void halftoneField(const HalftonePayload &field, std::uint32_t texture);
     void wavetable3d(const Wavetable3dUniforms &uniforms, std::uint32_t texture,
                      std::uint32_t palette);
+    void formantCurve(const FormantPayload &curve, float dbRange, std::uint32_t color);
 
     [[nodiscard]] std::span<const PrimitiveDesc> primitives() const noexcept { return primitives_; }
     [[nodiscard]] std::span<const float> payload() const noexcept { return payload_; }

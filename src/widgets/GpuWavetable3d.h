@@ -12,6 +12,8 @@ struct Wavetable3dSettings {
     float position = 0.5f;
     float morph3d = 1;
     float baseline = -1;
+    float ambientFocus = 0.22f;
+    float ribbonDepth = 0;
     float voiceSpread = 0.025f;
     float time = 0;
     float detune = 0;
@@ -19,6 +21,7 @@ struct Wavetable3dSettings {
     std::uint32_t slices = 16;
     std::uint32_t phases = 256;
     std::uint32_t voices = 0;
+    bool studioShading = false;
 };
 class GpuWavetable3d {
   public:

@@ -3,6 +3,7 @@
 #include "math/Sdf.h"
 #include "math/ShadowMath.h"
 #include "math/StemDarkening.h"
+#include "render/FormantCurve.h"
 #include "render/GradientParameter.h"
 #include "render/HalftoneField.h"
 #include "render/ShadingSupport.h"
@@ -175,14 +176,26 @@ ShadeResult shadePlot(const FrameView &frame, const PrimitiveDesc &desc,
     const auto field = [&](Vector2 p) {
         const double u =
             std::clamp((p.x - (shape.center.x - shape.half.x)) / (2 * shape.half.x), 0.0, 1.0);
-        const auto column = static_cast<std::int64_t>(std::min(u * columns, columns - 1));
+        const auto count = static_cast<std::int64_t>(columns);
+        const auto raw = static_cast<std::int64_t>(
+            std::floor(std::min(u * columns, columns - 1) + desc.params[2]));
+        const auto column = (raw % count + count) % count;
         const Texel band = fetchTexel(strip, column, 0);
         const double top = shape.center.y + shape.half.y - band[1] * 2 * shape.half.y;
         const double bottom = shape.center.y + shape.half.y - band[0] * 2 * shape.half.y;
         const double outside = std::max(top - p.y, p.y - bottom);
         return outside - halfThickness;
     };
-    return shadeField(frame, desc, transform, local, field);
+    auto result = shadeField(frame, desc, transform, local, field);
+    if (desc.params[3] > 0) {
+        const double u = (local.x - shape.center.x + shape.half.x) / (2 * shape.half.x);
+        const auto smooth = [&](double value) {
+            const double t = std::clamp(value / desc.params[3], 0.0, 1.0);
+            return t * t * (3 - 2 * t);
+        };
+        result.color = detail::scale(result.color, smooth(u) * smooth(1 - u));
+    }
+    return result;
 }
 }
 
@@ -289,6 +302,9 @@ ShadeResult shadePrimitive(const FrameView &frame, const PrimitiveDesc &desc, do
         break;
     case PrimitiveKind::wavetable3d:
         return solid(shadeWavetable3d(frame, desc, x, y));
+    case PrimitiveKind::formantCurve:
+        result = solid(shadeFormantCurve(frame, desc, local));
+        break;
     }
     if (desc.clipId != noClip) {
         const double clip = clipCoverage(frame, desc.clipId, x, y);

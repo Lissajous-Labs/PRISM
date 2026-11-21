@@ -33,6 +33,8 @@ class GpuSpectralMatrix {
     }
     void draw(render::DrawList &list, render::RectF rect, std::uint32_t slot,
               std::uint32_t paletteRow, float rows = 28) const;
+    void draw(render::DrawList &list, render::RectF rect, std::uint32_t slot,
+              std::uint32_t paletteRow, const HalftoneStyle &style) const;
 
   private:
     static constexpr std::size_t fftSize = 4096;

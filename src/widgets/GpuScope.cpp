@@ -37,7 +37,8 @@ void PhosphorBuffer::deposit(std::span<const float> strip, float intensity) noex
 
 GpuScope::GpuScope(std::uint32_t columns, std::size_t capacity)
     : columns_(columns), history_(capacity, 0.0f),
-      strip_(static_cast<std::size_t>(columns) * 2, 0.5f) {}
+      strip_(static_cast<std::size_t>(columns) * 2, 0.5f),
+      rmsStrip_(static_cast<std::size_t>(columns) * 2, 0.5f) {}
 
 void GpuScope::append(std::span<const float> samples) noexcept {
     for (const float sample : samples) {
@@ -89,6 +90,8 @@ bool GpuScope::build(double samplesPerPixel) noexcept {
     for (std::uint32_t x = 0; x < columns_; ++x) {
         float low;
         float high;
+        double sumSquares = 0;
+        std::size_t count = 0;
         if (samplesPerPixel >= 1) {
             const auto n0 = start + static_cast<std::uint64_t>(std::floor(x * samplesPerPixel));
             const auto n1 = std::max(
@@ -98,6 +101,8 @@ bool GpuScope::build(double samplesPerPixel) noexcept {
                 const float sample = sampleAt(n);
                 low = std::min(low, sample);
                 high = std::max(high, sample);
+                sumSquares += static_cast<double>(sample) * sample;
+                ++count;
             }
         } else {
             const double left = static_cast<double>(start) + x * samplesPerPixel;
@@ -107,9 +112,16 @@ bool GpuScope::build(double samplesPerPixel) noexcept {
             const float c = interpolate(right);
             low = std::min({a, b, c});
             high = std::max({a, b, c});
+            sumSquares = static_cast<double>(a) * a + static_cast<double>(b) * b +
+                         static_cast<double>(c) * c;
+            count = 3;
         }
+        const float rms =
+            count > 0 ? static_cast<float>(std::sqrt(sumSquares / static_cast<double>(count))) : 0;
         strip_[x * 2] = toUnit(low);
         strip_[x * 2 + 1] = toUnit(high);
+        rmsStrip_[x * 2] = toUnit(-rms);
+        rmsStrip_[x * 2 + 1] = toUnit(rms);
     }
     return true;
 }

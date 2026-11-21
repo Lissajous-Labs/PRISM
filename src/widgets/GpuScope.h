@@ -42,6 +42,9 @@ class GpuScope {
     bool build(double samplesPerPixel) noexcept;
 
     [[nodiscard]] render::TextureView strip() const noexcept { return {columns_, 1, 2, strip_}; }
+    [[nodiscard]] render::TextureView rmsStrip() const noexcept {
+        return {columns_, 1, 2, rmsStrip_};
+    }
     [[nodiscard]] std::span<const float> bands() const noexcept { return strip_; }
     [[nodiscard]] std::optional<std::uint64_t> triggerSample() const noexcept { return trigger_; }
     [[nodiscard]] float sampleAt(std::uint64_t absolute) const noexcept;
@@ -56,6 +59,7 @@ class GpuScope {
     std::vector<float> history_;
     std::uint64_t written_ = 0;
     std::vector<float> strip_;
+    std::vector<float> rmsStrip_;
     float level_ = 0;
     float hysteresis_ = 0.05f;
     std::optional<std::uint64_t> trigger_;

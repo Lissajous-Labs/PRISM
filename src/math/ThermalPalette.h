@@ -35,4 +35,26 @@ namespace prism::math {
     }
     return result;
 }
+
+[[nodiscard]] inline Oklch emberOklch(double energy) noexcept {
+    const double z = std::clamp(energy, 0.0, 1.0);
+    return {0.16 + 0.60 * std::pow(z, 0.86), 0.118 * std::pow(z, 0.78),
+            (38 + 6 * thermalSmoothstep(0.1, 1.0, z)) * std::numbers::pi / 180};
+}
+
+[[nodiscard]] inline LinearRgb emberEmission(double energy, double overdrive = 0) noexcept {
+    const double z = std::clamp(energy, 0.0, 1.0);
+    const auto base = fromOklab(fromOklch(emberOklch(z)));
+    const double gain = 1 + overdrive * std::pow(thermalSmoothstep(0.75, 1, z), 1.6);
+    return {gain * std::clamp(base.r, 0.0, 1.0), gain * std::clamp(base.g, 0.0, 1.0),
+            gain * std::clamp(base.b, 0.0, 1.0)};
+}
+
+[[nodiscard]] inline std::array<LinearRgb, 256> emberPalette(double overdrive = 0) noexcept {
+    std::array<LinearRgb, 256> result{};
+    for (std::size_t i = 0; i < result.size(); ++i) {
+        result[i] = emberEmission(static_cast<double>(i) / 255, overdrive);
+    }
+    return result;
+}
 }

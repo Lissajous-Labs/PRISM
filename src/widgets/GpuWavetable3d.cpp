@@ -40,17 +40,24 @@ GpuWavetable3d::uniforms(render::RectF rect, const Wavetable3dSettings &settings
     u.projection[0] = static_cast<float>(camera.inverseDistance);
     u.projection[1] = static_cast<float>(camera.amplitudeScale);
     u.projection[2] = static_cast<float>(camera.fit(rect.x1 - rect.x0, rect.y1 - rect.y0));
-    u.projection[3] = static_cast<float>(std::abs(std::cos(camera.pitch) * std::sin(camera.yaw)) +
-                                         std::abs(std::sin(camera.pitch) * camera.amplitudeScale) +
-                                         std::abs(std::cos(camera.pitch) * std::cos(camera.yaw)));
+    u.projection[3] = static_cast<float>(
+        std::abs(std::cos(camera.pitch) * std::sin(camera.yaw)) +
+        std::abs(std::sin(camera.pitch) * camera.amplitudeScale) +
+        std::abs(std::cos(camera.pitch) * std::cos(camera.yaw)) * camera.depthScale);
     u.shape[0] = std::clamp(settings.position, 0.0f, 1.0f);
-    u.shape[1] = settings.baseline;
+    u.shape[1] = settings.ribbonDepth > 0 ? settings.ribbonDepth : settings.baseline;
     u.shape[2] = settings.voiceSpread;
-    u.shape[3] = 0.22f;
+    u.shape[3] = settings.ambientFocus;
     u.slices = std::clamp(settings.slices, 2u, 20u);
     u.phases = settings.phases == 128 ? 128 : 256;
     u.voices = std::min(settings.voices, 4u);
-    u.flags = camera.descendingSlices() ? 1 : 0;
+    const auto depthFixed =
+        camera.depthScale != 1
+            ? static_cast<std::uint32_t>(
+                  std::clamp(std::lround(camera.depthScale * 1024), 1l, 65535l))
+            : 0u;
+    u.flags = (camera.descendingSlices() ? 1u : 0u) | (settings.ribbonDepth > 0 ? 2u : 0u) |
+              (settings.studioShading ? 4u : 0u) | (depthFixed << 16);
     const auto &w = settings.warp;
     const double values[]{w.mirror,
                           w.bend,

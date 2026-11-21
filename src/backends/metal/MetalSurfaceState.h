@@ -3,6 +3,7 @@
 #import <Metal/Metal.h>
 
 #include "backends/metal/MetalEffects.h"
+#include "backends/metal/MetalFormantCache.h"
 #include "backends/metal/MetalPathEngine.h"
 #include "backends/metal/MetalState.h"
 #include "render/RenderSurface.h"
@@ -41,6 +42,7 @@ struct MetalSurfaceState {
     render::UberBatches batches;
     MetalPathEngine paths;
     MetalEffects effects;
+    MetalFormantCache formants;
     id<MTLTexture> output = nil;
     bool bloomActive = false;
     std::vector<std::uint32_t> indexScratch;

@@ -39,7 +39,10 @@ Vector2 physical(const TransformRecord &t, Vector2 p) noexcept {
 }
 Vector2 rasterProject(const Wavetable3dUniforms &u, double x, double y, double z,
                       double &depth) noexcept {
-    const float fx = static_cast<float>(x), fy = static_cast<float>(y), fz = static_cast<float>(z);
+    const float dzScale =
+        (u.flags >> 16) != 0 ? static_cast<float>(u.flags >> 16) / 1024.0f : 1.0f;
+    const float fx = static_cast<float>(x), fy = static_cast<float>(y),
+                fz = static_cast<float>(z) * dzScale;
     const float xr = u.camera[0] * fx + u.camera[1] * fz;
     const float zr = -u.camera[1] * fx + u.camera[0] * fz;
     const float yr = u.camera[2] * u.projection[1] * fy - u.camera[3] * zr;
@@ -125,35 +128,62 @@ Rgba fragment(const FrameView &frame, const PrimitiveDesc &desc, const Wavetable
         return {};
     }
     Rgba result{};
+    const bool studio = (u.flags & 4u) != 0;
     const double depth = std::exp(-0.45 * std::clamp(0.5 * (u.projection[3] - v.depth), 0.0, 1.0));
     if (v.mode == 0) {
         const double vertical = std::clamp(v.v, 0.0, 1.0);
-        const double alpha = (v.active ? 0.34 : 0.17) * v.focus * depth *
-                             std::exp(-2.4 * vertical) * std::pow(1 - vertical, 0.45) *
-                             (v.ghost ? 0.35 : 1);
-        result = palette(frame, desc.gradientOffset, 0.32 + 0.36 * v.focus * (1 - vertical));
-        for (std::size_t c = 0; c < 3; ++c) {
-            result[c] *= static_cast<float>(alpha);
+        if (studio) {
+            const double alpha = (v.active ? 0.68 : 0.56) * (0.65 + 0.35 * v.focus) *
+                                 (0.75 + 0.25 * depth) * (1 - 0.35 * vertical) *
+                                 (v.ghost ? 0.35 : 1);
+            result = palette(frame, desc.gradientOffset, 0.26 + 0.12 * v.focus * (1 - vertical));
+            for (std::size_t c = 0; c < 3; ++c) {
+                result[c] *= static_cast<float>(alpha);
+            }
+            result[3] = static_cast<float>(alpha);
+        } else {
+            const double alpha = (v.active ? 0.34 : 0.17) * v.focus * depth *
+                                 std::exp(-2.4 * vertical) * std::pow(1 - vertical, 0.45) *
+                                 (v.ghost ? 0.35 : 1);
+            result = palette(frame, desc.gradientOffset, 0.32 + 0.36 * v.focus * (1 - vertical));
+            for (std::size_t c = 0; c < 3; ++c) {
+                result[c] *= static_cast<float>(alpha);
+            }
+            result[3] = static_cast<float>(alpha);
         }
-        result[3] = static_cast<float>(alpha);
     } else {
-        const double width = v.mode == 2 ? 1 : v.active ? 1.9 : 1.1;
+        const double width = v.mode == 2 ? (studio ? 0.85 : 1.0)
+                             : v.active  ? 1.9
+                                         : (studio ? 1.25 : 1.1);
         const double core = math::boxCoverage(std::abs(v.distance) - width * 0.5, v.normal);
         if (v.mode == 2) {
-            const double alpha = 0.55 * core;
-            result = {static_cast<float>(0.0273209 * alpha), static_cast<float>(0.0318960 * alpha),
-                      static_cast<float>(0.0423114 * alpha), static_cast<float>(alpha)};
-        } else if (v.active) {
-            const double halo = std::exp(-v.distance * v.distance / (2 * 2.6 * 2.6));
-            const auto hot = palette(frame, desc.gradientOffset, 0.98);
-            const auto warm = palette(frame, desc.gradientOffset, 0.58);
-            for (std::size_t c = 0; c < 3; ++c) {
-                result[c] = static_cast<float>((hot[c] * core + 0.42 * warm[c] * halo) * depth);
+            const double alpha = (studio ? 0.68 : 0.55) * core;
+            if (studio) {
+                result = {static_cast<float>(0.036 * alpha), static_cast<float>(0.036 * alpha),
+                          static_cast<float>(0.036 * alpha), static_cast<float>(alpha)};
+            } else {
+                result = {static_cast<float>(0.0273209 * alpha),
+                          static_cast<float>(0.0318960 * alpha),
+                          static_cast<float>(0.0423114 * alpha), static_cast<float>(alpha)};
             }
-            result[3] = static_cast<float>(core * depth);
+        } else if (v.active) {
+            const double sigma = studio ? 1.3 : 2.6;
+            const double halo = std::exp(-v.distance * v.distance / (2 * sigma * sigma));
+            const auto hot = palette(frame, desc.gradientOffset, studio ? 1.0 : 0.98);
+            const auto warm = palette(frame, desc.gradientOffset, studio ? 0.65 : 0.58);
+            const double atten = studio ? (0.88 + 0.12 * depth) : depth;
+            const double haloGain = studio ? 0.18 : 0.42;
+            for (std::size_t c = 0; c < 3; ++c) {
+                result[c] = static_cast<float>((hot[c] * core + haloGain * warm[c] * halo) * atten);
+            }
+            result[3] = static_cast<float>(core * atten);
         } else {
-            const double alpha = 0.75 * v.focus * depth * core * (v.ghost ? 0.35 : 1);
-            result = palette(frame, desc.gradientOffset, 0.30 + 0.40 * v.focus);
+            const double alpha =
+                studio ? 0.90 * (0.70 + 0.30 * v.focus) * (0.78 + 0.22 * depth) * core *
+                             (v.ghost ? 0.35 : 1)
+                       : 0.75 * v.focus * depth * core * (v.ghost ? 0.35 : 1);
+            result = palette(frame, desc.gradientOffset,
+                             studio ? (0.52 + 0.22 * v.focus) : (0.30 + 0.40 * v.focus));
             for (std::size_t c = 0; c < 3; ++c) {
                 result[c] *= static_cast<float>(alpha);
             }
@@ -295,10 +325,11 @@ void triangles(const FrameView &frame, const PrimitiveDesc &desc, const Wavetabl
             const float x = -1.0f + 2.0f * static_cast<float>(i) / static_cast<float>(phases - 1);
             const float z = 2.0f * static_cast<float>(morph) - 1.0f;
             const float value = rasterSample(table, u, phase, static_cast<float>(morph), voice);
+            const float baseY = (u.flags & 2u) != 0 ? value - u.shape[1] : u.shape[1];
             double depth;
             crest[i].p = physical(transform, rasterProject(u, x, value, z, depth));
             crest[i].depth = depth;
-            base[i].p = physical(transform, rasterProject(u, x, u.shape[1], z, depth));
+            base[i].p = physical(transform, rasterProject(u, x, baseY, z, depth));
             base[i].depth = depth;
             base[i].v = 1;
             for (Vertex *v : {&crest[i], &base[i]}) {
@@ -310,7 +341,9 @@ void triangles(const FrameView &frame, const PrimitiveDesc &desc, const Wavetabl
         for (std::uint32_t i = 0; i + 1 < phases; ++i) {
             quad(crest[i], base[i], crest[i + 1], base[i + 1]);
         }
-        const double radius = active ? 0.95 + 3 * 2.6 : 0.55 + 1;
+        const bool studio = (u.flags & 4u) != 0;
+        const double radius = active ? (studio ? 0.95 + 2.5 * 1.3 : 0.95 + 3 * 2.6)
+                                     : (studio ? 0.6 + 1 : 0.55 + 1);
         for (std::uint32_t i = 0; i < phases; ++i) {
             const auto before = unit(crest[i].p - crest[i == 0 ? 0 : i - 1].p);
             const auto after = unit(crest[i + 1 < phases ? i + 1 : i].p - crest[i].p);

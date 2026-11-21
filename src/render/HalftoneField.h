@@ -13,6 +13,8 @@ inline constexpr std::uint32_t hexagonal = 2;
 inline constexpr std::uint32_t superellipse = 4;
 inline constexpr std::uint32_t cursor = 8;
 inline constexpr std::uint32_t summedArea = 16;
+inline constexpr std::uint32_t cleanBackdrop = 32;
+inline constexpr std::uint32_t pairedSpots = 64;
 }
 struct alignas(16) HalftonePayload {
     float rect[4];

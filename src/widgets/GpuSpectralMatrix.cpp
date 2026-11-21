@@ -160,8 +160,16 @@ void GpuSpectralMatrix::draw(render::DrawList &list, render::RectF rect, std::ui
     style.radius = 0.32f;
     style.minimumWidth = 1;
     style.screenMix = 0;
-    auto h = halftonePayload(rect, style, paletteRow, render::noTexture);
-    h.modeFlags = render::halftoneFlags::spectralMatrix;
+    draw(list, rect, slot, paletteRow, style);
+}
+void GpuSpectralMatrix::draw(render::DrawList &list, render::RectF rect, std::uint32_t slot,
+                             std::uint32_t paletteRow, const HalftoneStyle &style) const {
+    auto resolved = style;
+    resolved.columns = static_cast<float>(columns_);
+    auto h = halftonePayload(rect, resolved, paletteRow, render::noTexture);
+    h.modeFlags = render::halftoneFlags::spectralMatrix |
+                  (resolved.cleanBackdrop ? render::halftoneFlags::cleanBackdrop : 0u) |
+                  (resolved.pairedSpots ? render::halftoneFlags::pairedSpots : 0u);
     list.halftoneField(h, slot);
 }
 }

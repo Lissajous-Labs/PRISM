@@ -69,7 +69,10 @@ float waveAmplitude(device const float *h, texture2d<float> source, float theta,
     return clamp(value, -1.0f, 1.0f);
 }
 float2 waveProject(device const float *h, float3 q, thread float &depth) {
-    float xr = h[4] * q.x + h[5] * q.z, zr = -h[5] * q.x + h[4] * q.z;
+    uint depthFixed = as_type<uint>(h[19]) >> 16;
+    float dzScale = depthFixed != 0u ? float(depthFixed) / 1024.0f : 1.0f;
+    float sz = q.z * dzScale;
+    float xr = h[4] * q.x + h[5] * sz, zr = -h[5] * q.x + h[4] * sz;
     float yr = h[6] * h[9] * q.y - h[7] * zr;
     depth = h[7] * h[9] * q.y + h[6] * zr;
     float scale = h[10] / (1.0f - depth * h[8]);
@@ -92,7 +95,7 @@ vertex WavetableVertex wavetable3dVertex(uint vertexId [[vertex_id]], uint insta
                                          constant FrameUniforms &uniforms [[buffer(4)]],
                                          constant uint &primitiveIndex [[buffer(8)]],
                                          constant uint &drawMode [[buffer(9)]],
-                                         array<texture2d<float>, 8> textures [[texture(1)]]) {
+                                         array<texture2d<float>, 16> textures [[texture(1)]]) {
     PrimitiveDesc d = primitives[primitiveIndex];
     device const float *h = payload + d.payloadOffset;
     TransformRecord t = transforms[d.transformId];
@@ -128,19 +131,27 @@ vertex WavetableVertex wavetable3dVertex(uint vertexId [[vertex_id]], uint insta
             bool baseline = (vertexId & 1u) != 0u;
             if (baseline) {
                 float x = -1.0f + 2.0f * float(phase) / float(phases - 1u);
-                p = wavePhysical(t, waveProject(h, float3(x, h[13], 2.0f * morph - 1.0f), depth));
-            } else { p = waveCrest(h, textures[min(d.auxHandle, 7u)], t, phase, morph, voice, depth); }
+                float baseY = h[13];
+                if ((as_type<uint>(h[19]) & 2u) != 0u) {
+                    float amplitude = waveAmplitude(h, textures[min(d.auxHandle, 15u)],
+                                                    2.0f * M_PI_F * float(phase) / float(phases - 1u), morph, voice);
+                    baseY = amplitude - h[13];
+                }
+                p = wavePhysical(t, waveProject(h, float3(x, baseY, 2.0f * morph - 1.0f), depth));
+            } else { p = waveCrest(h, textures[min(d.auxHandle, 15u)], t, phase, morph, voice, depth); }
             out.data.x = baseline ? 1.0f : 0.0f;
         } else {
-            p = waveCrest(h, textures[min(d.auxHandle, 7u)], t, phase, morph, voice, depth);
+            p = waveCrest(h, textures[min(d.auxHandle, 15u)], t, phase, morph, voice, depth);
             float ignored;
-            float2 previous = waveCrest(h, textures[min(d.auxHandle, 7u)], t, phase == 0u ? 0u : phase - 1u, morph, voice, ignored);
-            float2 next = waveCrest(h, textures[min(d.auxHandle, 7u)], t, min(phase + 1u, phases - 1u), morph, voice, ignored);
+            float2 previous = waveCrest(h, textures[min(d.auxHandle, 15u)], t, phase == 0u ? 0u : phase - 1u, morph, voice, ignored);
+            float2 next = waveCrest(h, textures[min(d.auxHandle, 15u)], t, min(phase + 1u, phases - 1u), morph, voice, ignored);
             float2 before = waveUnit(p - previous), after = waveUnit(next - p);
             float2 tangent = phase == 0u ? after : phase + 1u == phases ? before : waveUnit(before + after);
             float2 normal = float2(-tangent.y, tangent.x), segment = phase + 1u == phases ? before : after;
             float2 segmentNormal = float2(-segment.y, segment.x);
-            float radius = active ? 0.95f + 3.0f * 2.6f : 0.55f + 1.0f;
+            bool studio = (as_type<uint>(h[19]) & 4u) != 0u;
+            float radius = active ? (studio ? 0.95f + 2.5f * 1.3f : 0.95f + 3.0f * 2.6f)
+                                  : (studio ? 0.6f + 1.0f : 0.55f + 1.0f);
             float extent = radius / max(0.25f, abs(dot(normal, segmentNormal)));
             float side = (vertexId & 1u) != 0u ? 1.0f : -1.0f;
             p += side * normal * extent;
@@ -168,25 +179,41 @@ fragment float4 wavetable3dFragment(WavetableVertex in [[stage_in]],
     float2 local = applyInverse(transforms[d.transformId], in.position.xy);
     if (local.x < h[0] || local.x > h[2] || local.y < h[1] || local.y > h[3]) { return float4(0.0f); }
     bool active = (in.flags & 1u) != 0u, ghost = (in.flags & 2u) != 0u;
+    bool studio = (as_type<uint>(h[19]) & 4u) != 0u;
     float depth = exp(-0.45f * clamp(0.5f * (h[11] - in.data.w), 0.0f, 1.0f));
     float4 result;
     if (in.mode == 0u) {
         float v = clamp(in.data.x, 0.0f, 1.0f);
-        float alpha = (active ? 0.34f : 0.17f) * in.data.z * depth * exp(-2.4f * v) * pow(1.0f - v, 0.45f) * (ghost ? 0.35f : 1.0f);
-        result = float4(wavePalette(gradients, d.gradientOffset, 0.32f + 0.36f * in.data.z * (1.0f - v)) * alpha, alpha);
+        if (studio) {
+            float alpha = (active ? 0.68f : 0.56f) * (0.65f + 0.35f * in.data.z) *
+                          (0.75f + 0.25f * depth) * (1.0f - 0.35f * v) * (ghost ? 0.35f : 1.0f);
+            result = float4(wavePalette(gradients, d.gradientOffset, 0.26f + 0.12f * in.data.z * (1.0f - v)) * alpha, alpha);
+        } else {
+            float alpha = (active ? 0.34f : 0.17f) * in.data.z * depth * exp(-2.4f * v) * pow(1.0f - v, 0.45f) * (ghost ? 0.35f : 1.0f);
+            result = float4(wavePalette(gradients, d.gradientOffset, 0.32f + 0.36f * in.data.z * (1.0f - v)) * alpha, alpha);
+        }
     } else {
-        float width = in.mode == 2u ? 1.0f : active ? 1.9f : 1.1f;
+        float width = in.mode == 2u ? (studio ? 0.85f : 1.0f)
+                      : active      ? 1.9f
+                                    : (studio ? 1.25f : 1.1f);
         float core = boxCoverage(abs(in.data.y) - 0.5f * width, in.normal);
         if (in.mode == 2u) {
-            float alpha = 0.55f * core;
-            result = float4(float3(0.0273209f, 0.0318960f, 0.0423114f) * alpha, alpha);
+            float alpha = (studio ? 0.68f : 0.55f) * core;
+            result = studio ? float4(float3(0.036f) * alpha, alpha)
+                            : float4(float3(0.0273209f, 0.0318960f, 0.0423114f) * alpha, alpha);
         } else if (active) {
-            float halo = exp(-in.data.y * in.data.y / (2.0f * 2.6f * 2.6f));
-            float3 hot = wavePalette(gradients, d.gradientOffset, 0.98f), warm = wavePalette(gradients, d.gradientOffset, 0.58f);
-            result = float4((hot * core + 0.42f * warm * halo) * depth, core * depth);
+            float sigma = studio ? 1.3f : 2.6f;
+            float halo = exp(-in.data.y * in.data.y / (2.0f * sigma * sigma));
+            float3 hot = wavePalette(gradients, d.gradientOffset, studio ? 1.0f : 0.98f);
+            float3 warm = wavePalette(gradients, d.gradientOffset, studio ? 0.65f : 0.58f);
+            float atten = studio ? (0.88f + 0.12f * depth) : depth;
+            float haloGain = studio ? 0.18f : 0.42f;
+            result = float4((hot * core + haloGain * warm * halo) * atten, core * atten);
         } else {
-            float alpha = 0.75f * in.data.z * depth * core * (ghost ? 0.35f : 1.0f);
-            result = float4(wavePalette(gradients, d.gradientOffset, 0.30f + 0.40f * in.data.z) * alpha, alpha);
+            float alpha = studio ? 0.90f * (0.70f + 0.30f * in.data.z) * (0.78f + 0.22f * depth) * core * (ghost ? 0.35f : 1.0f)
+                                 : 0.75f * in.data.z * depth * core * (ghost ? 0.35f : 1.0f);
+            result = float4(wavePalette(gradients, d.gradientOffset,
+                                        studio ? (0.52f + 0.22f * in.data.z) : (0.30f + 0.40f * in.data.z)) * alpha, alpha);
         }
     }
     FrameBuffers frame; frame.primitives = primitives; frame.payload = payload; frame.transforms = transforms; frame.clips = clips;

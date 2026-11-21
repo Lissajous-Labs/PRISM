@@ -44,6 +44,14 @@ namespace prism::render {
     return dy * average;
 }
 
+inline constexpr float windingScale = 1048576.0f;
+
+[[nodiscard]] inline std::int32_t fixedContribution(PackedPiece packed, std::uint32_t column,
+                                                    std::uint32_t row) noexcept {
+    return static_cast<std::int32_t>(
+        std::lrint(pieceContribution(packed, column, row) * windingScale));
+}
+
 [[nodiscard]] inline float windingToAlpha(float winding, FillRule rule) noexcept {
     const float magnitude = std::fabs(winding);
     if (rule == FillRule::nonZero) {

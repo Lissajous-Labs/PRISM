@@ -72,42 +72,71 @@ void FontFile::appendOutline(std::uint16_t glyph, const double transform[6],
     const std::int16_t contours = reader.i16();
     reader.skip(8);
     if (contours < 0) {
+        struct Component {
+            std::uint16_t glyph;
+            std::uint16_t flags;
+            double dx;
+            double dy;
+            double a;
+            double b;
+            double c;
+            double d;
+        };
+        std::vector<Component> components;
         bool more = true;
         while (more && reader.ok()) {
-            const std::uint16_t flags = reader.u16();
-            const std::uint16_t component = reader.u16();
-            double dx = 0;
-            double dy = 0;
-            if (flags & 0x1u) {
-                dx = reader.i16();
-                dy = reader.i16();
+            Component part{};
+            part.flags = reader.u16();
+            part.glyph = reader.u16();
+            if (part.flags & 0x1u) {
+                part.dx = reader.i16();
+                part.dy = reader.i16();
             } else {
-                dx = static_cast<std::int8_t>(reader.u8());
-                dy = static_cast<std::int8_t>(reader.u8());
+                part.dx = static_cast<std::int8_t>(reader.u8());
+                part.dy = static_cast<std::int8_t>(reader.u8());
             }
-            double a = 1, b = 0, c = 0, d = 1;
+            part.a = part.d = 1;
             const auto f2dot14 = [&] { return reader.i16() / 16384.0; };
-            if (flags & 0x8u) {
-                a = d = f2dot14();
-            } else if (flags & 0x40u) {
-                a = f2dot14();
-                d = f2dot14();
-            } else if (flags & 0x80u) {
-                a = f2dot14();
-                b = f2dot14();
-                c = f2dot14();
-                d = f2dot14();
+            if (part.flags & 0x8u) {
+                part.a = part.d = f2dot14();
+            } else if (part.flags & 0x40u) {
+                part.a = f2dot14();
+                part.d = f2dot14();
+            } else if (part.flags & 0x80u) {
+                part.a = f2dot14();
+                part.b = f2dot14();
+                part.c = f2dot14();
+                part.d = f2dot14();
             }
-            const double combined[6] = {transform[0] * a + transform[2] * b,
-                                        transform[1] * a + transform[3] * b,
-                                        transform[0] * c + transform[2] * d,
-                                        transform[1] * c + transform[3] * d,
-                                        transform[0] * dx + transform[2] * dy + transform[4],
-                                        transform[1] * dx + transform[3] * dy + transform[5]};
-            const std::size_t resume = reader.offset();
-            appendOutline(component, combined, path, depth + 1);
-            reader.seek(resume);
-            more = (flags & 0x20u) != 0;
+            components.push_back(part);
+            more = (part.flags & 0x20u) != 0;
+        }
+        if (varied()) {
+            std::vector<double> x(components.size() + 4, 0);
+            std::vector<double> y(components.size() + 4, 0);
+            for (std::size_t i = 0; i < components.size(); ++i) {
+                x[i] = components[i].dx;
+                y[i] = components[i].dy;
+            }
+            std::vector<double> ddx;
+            std::vector<double> ddy;
+            glyphDeltas(glyph, x, y, {}, ddx, ddy);
+            for (std::size_t i = 0; i < components.size(); ++i) {
+                if (components[i].flags & 0x2u) {
+                    components[i].dx += ddx[i];
+                    components[i].dy += ddy[i];
+                }
+            }
+        }
+        for (const Component &part : components) {
+            const double combined[6] = {
+                transform[0] * part.a + transform[2] * part.b,
+                transform[1] * part.a + transform[3] * part.b,
+                transform[0] * part.c + transform[2] * part.d,
+                transform[1] * part.c + transform[3] * part.d,
+                transform[0] * part.dx + transform[2] * part.dy + transform[4],
+                transform[1] * part.dx + transform[3] * part.dy + transform[5]};
+            appendOutline(part.glyph, combined, path, depth + 1);
         }
         return;
     }
@@ -150,6 +179,21 @@ void FontFile::appendOutline(std::uint16_t glyph, const double transform[6],
     }
     if (!reader.ok()) {
         return;
+    }
+    if (varied()) {
+        std::vector<double> x(pointCount + 4, 0);
+        std::vector<double> y(pointCount + 4, 0);
+        for (std::size_t i = 0; i < pointCount; ++i) {
+            x[i] = points[i].x;
+            y[i] = points[i].y;
+        }
+        std::vector<double> dx;
+        std::vector<double> dy;
+        glyphDeltas(glyph, x, y, ends, dx, dy);
+        for (std::size_t i = 0; i < pointCount; ++i) {
+            points[i].x += dx[i];
+            points[i].y += dy[i];
+        }
     }
     std::size_t begin = 0;
     for (const std::uint16_t end : ends) {

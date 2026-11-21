@@ -124,12 +124,51 @@ bool checkSystemFont() {
     return font->glyphIndex('g') != 0 && !outline.verbs().empty() && layout.width > 50 &&
            layout.glyphs.size() == 12;
 }
+
+double horizontalExtent(const text::FontFile &font, std::uint16_t glyph) {
+    render::VectorPath outline;
+    font.outline(glyph, 1, outline);
+    double low = 1e9;
+    double high = -1e9;
+    for (const auto &point : outline.points()) {
+        low = std::min(low, point.x);
+        high = std::max(high, point.x);
+    }
+    return high - low;
+}
+
+bool checkVariableFont() {
+    std::ifstream file("/System/Library/Fonts/SFNS.ttf", std::ios::binary);
+    if (!file) {
+        return true;
+    }
+    std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(file),
+                                    std::istreambuf_iterator<char>()};
+    auto font = text::FontFile::parse(std::move(bytes));
+    if (!font || font->axes().empty()) {
+        return false;
+    }
+    const std::uint16_t glyph = font->glyphIndex('H');
+    const double regularAdvance = font->advance(glyph);
+    const double regularExtent = horizontalExtent(*font, glyph);
+    const std::pair<std::uint32_t, double> heavy{text::tag("wght"), 900};
+    font->setVariation(std::span(&heavy, 1));
+    const double heavyAdvance = font->advance(glyph);
+    const double heavyExtent = horizontalExtent(*font, glyph);
+    const std::pair<std::uint32_t, double> regular{text::tag("wght"), 400};
+    font->setVariation(std::span(&regular, 1));
+    std::cout << "Variable advance " << regularAdvance << " -> " << heavyAdvance << ", extent "
+              << regularExtent << " -> " << heavyExtent << '\n';
+    return heavyAdvance > regularAdvance * 1.04 && heavyExtent > regularExtent * 1.05 &&
+           font->advance(glyph) == regularAdvance &&
+           horizontalExtent(*font, glyph) == regularExtent;
+}
 }
 
 int main() {
     const auto font = text::FontFile::parse(test::buildTestFont());
     if (!font || !checkUtf8() || !checkBidi() || !checkBreaks() || !checkFont(*font) ||
-        !checkShaping(*font) || !checkSystemFont()) {
+        !checkShaping(*font) || !checkSystemFont() || !checkVariableFont()) {
         std::cerr << "Text shaping contract failed\n";
         return 1;
     }

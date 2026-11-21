@@ -73,6 +73,7 @@ add_library(prism_text STATIC
     text/Bidi.cpp
     text/FontEngine.cpp
     text/FontFile.cpp
+    text/FontVariations.cpp
     text/GlyphAtlas.cpp
     text/GlyphOutline.cpp
     text/GlyphRasterizer.cpp

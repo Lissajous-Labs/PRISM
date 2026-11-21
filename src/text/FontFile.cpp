@@ -25,6 +25,9 @@ bool FontFile::load() {
     std::size_t head = 0;
     std::size_t hhea = 0;
     std::size_t maxp = 0;
+    std::size_t fvar = 0;
+    std::size_t gvar = 0;
+    std::size_t avar = 0;
     for (std::uint16_t i = 0; i < tableCount && reader.ok(); ++i) {
         const std::uint32_t name = reader.u32();
         reader.skip(4);
@@ -48,6 +51,12 @@ bool FontFile::load() {
             tables_.gsub = offset;
         if (name == tag("GPOS"))
             tables_.gpos = offset;
+        if (name == tag("fvar"))
+            fvar = offset;
+        if (name == tag("gvar"))
+            gvar = offset;
+        if (name == tag("avar"))
+            avar = offset;
     }
     if (!reader.ok() || !head || !hhea || !maxp || !tables_.cmap || !tables_.glyf ||
         !tables_.loca || !tables_.hmtx) {
@@ -75,6 +84,9 @@ bool FontFile::load() {
         }
     }
     layout_.parse(bytes_, tables_.gsub, tables_.gpos);
+    if (!loadVariations(fvar, gvar, avar)) {
+        return false;
+    }
     return reader.ok() && cmapFormat_ != 0 && metrics_.unitsPerEm != 0;
 }
 
@@ -123,14 +135,48 @@ std::uint16_t FontFile::glyphIndex(char32_t codepoint) const {
     return 0;
 }
 
-std::uint16_t FontFile::advance(std::uint16_t glyph) const {
+double FontFile::advance(std::uint16_t glyph) const {
     if (metricCount_ == 0) {
         return 0;
     }
     const std::uint16_t index =
         glyph < metricCount_ ? glyph : static_cast<std::uint16_t>(metricCount_ - 1);
     BinaryReader reader(bytes_);
-    return reader.u16At(tables_.hmtx + 4 * static_cast<std::size_t>(index));
+    const double width = reader.u16At(tables_.hmtx + 4 * static_cast<std::size_t>(index));
+    if (!varied()) {
+        return width;
+    }
+    std::size_t length = 0;
+    const std::size_t offset = glyphOffset(glyph, length);
+    std::size_t points = 0;
+    if (length != 0) {
+        reader.seek(offset);
+        const std::int16_t contours = reader.i16();
+        if (contours >= 0) {
+            points = contours == 0
+                         ? 0
+                         : static_cast<std::size_t>(reader.u16At(
+                               offset + 10 + 2 * static_cast<std::size_t>(contours - 1))) +
+                               1;
+        } else {
+            reader.seek(offset + 10);
+            bool more = true;
+            while (more && reader.ok()) {
+                const std::uint16_t flags = reader.u16();
+                reader.skip(2 + ((flags & 0x1u) ? 4 : 2));
+                reader.skip((flags & 0x8u) ? 2 : (flags & 0x40u) ? 4 : (flags & 0x80u) ? 8 : 0);
+                ++points;
+                more = (flags & 0x20u) != 0;
+            }
+        }
+    }
+    std::vector<double> x(points + 4, 0);
+    x[points + 1] = width;
+    const std::vector<double> y(points + 4, 0);
+    std::vector<double> dx;
+    std::vector<double> dy;
+    glyphDeltas(glyph, x, y, {}, dx, dy);
+    return width + dx[points + 1] - dx[points];
 }
 
 std::size_t FontFile::glyphOffset(std::uint16_t glyph, std::size_t &length) const {

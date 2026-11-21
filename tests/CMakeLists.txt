@@ -57,6 +57,7 @@ if(APPLE)
     prism_test(shadow_accuracy gpu/ShadowAccuracyTests.cpp prism_backend_metal)
     set_tests_properties(shadow_accuracy PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+prism_test(text_shaping unit/TextShapingTests.cpp prism_text)
 
 add_test(NAME no_comments COMMAND prism_check_comments "${PROJECT_SOURCE_DIR}")
 add_test(NAME comment_scanner COMMAND prism_check_comments --self-test)

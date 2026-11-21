@@ -33,6 +33,7 @@ add_custom_command(OUTPUT "${PRISM_SHADER_SOURCE}"
 
 add_library(prism_render STATIC
     render/DrawList.cpp
+    render/GradientTable.cpp
     render/PrimitiveShading.cpp
     render/UberBatches.cpp
     "${PRISM_SHADER_SOURCE}"

@@ -294,7 +294,7 @@ void DrawList::fillPath(const VectorPath &path, std::uint32_t color, FillRule ru
     polylineScratch_.clear();
     flattenPolylines(path, transforms_[transform_].forwardTransform(),
                      math::defaultFlattenTolerance, polylineScratch_);
-    appendFill(polylineScratch_, pathSegments_);
+    appendFill(polylineScratch_.view(), pathSegments_);
     emitPath(first, color, rule);
 }
 
@@ -307,7 +307,7 @@ void DrawList::strokePath(const VectorPath &path, const StrokeStyle &style, std:
     polylineScratch_.clear();
     outlineScratch_.clear();
     flattenPolylines(path, math::Affine2D{}, local.tolerance, polylineScratch_);
-    strokeOutlines(polylineScratch_, local, outlineScratch_);
+    strokeOutlines(polylineScratch_.view(), local, outlineScratch_);
     for (Polyline &outline : outlineScratch_) {
         for (math::Vector2 &point : outline.points) {
             const auto mapped = transform.apply(math::Point2{point.x, point.y});

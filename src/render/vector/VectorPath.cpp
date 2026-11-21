@@ -10,14 +10,6 @@ math::Vector2 apply(const math::Affine2D &transform, math::Vector2 point) noexce
     const auto mapped = transform.apply(math::Point2{point.x, point.y});
     return {mapped.x, mapped.y};
 }
-
-void finish(std::vector<Polyline> &output, Polyline &current, bool closed) {
-    if (current.points.size() >= 2) {
-        current.closed = closed;
-        output.push_back(std::move(current));
-    }
-    current = Polyline{};
-}
 }
 
 void VectorPath::clear() noexcept {
@@ -67,21 +59,25 @@ void VectorPath::arcTo(math::Vector2 center, double radius, double startAngle, d
 void VectorPath::close() { verbs_.push_back(PathVerb::close); }
 
 void flattenPolylines(const VectorPath &path, const math::Affine2D &transform, double tolerance,
-                      std::vector<Polyline> &output) {
-    Polyline current;
+                      PolylineBuffer &output) {
+    Polyline *current = &output.open();
+    const auto finish = [&](bool closed) {
+        output.commit(closed);
+        current = &output.open();
+    };
     std::size_t index = 0;
     math::Vector2 last{0, 0};
     for (const PathVerb verb : path.verbs()) {
         const auto points = path.points();
         switch (verb) {
         case PathVerb::move:
-            finish(output, current, false);
+            finish(false);
             last = apply(transform, points[index++]);
-            current.points.push_back(last);
+            current->points.push_back(last);
             break;
         case PathVerb::line:
             last = apply(transform, points[index++]);
-            current.points.push_back(last);
+            current->points.push_back(last);
             break;
         case PathVerb::quad: {
             const math::Vector2 control = apply(transform, points[index]);
@@ -89,7 +85,7 @@ void flattenPolylines(const VectorPath &path, const math::Affine2D &transform, d
             index += 2;
             const auto count = math::quadraticSegments(last, control, end, tolerance);
             for (std::uint32_t i = 1; i <= count; ++i) {
-                current.points.push_back(
+                current->points.push_back(
                     math::quadraticPoint(last, control, end, static_cast<double>(i) / count));
             }
             last = end;
@@ -102,7 +98,7 @@ void flattenPolylines(const VectorPath &path, const math::Affine2D &transform, d
             index += 3;
             const auto count = math::cubicSegments(last, first, second, end, tolerance);
             for (std::uint32_t i = 1; i <= count; ++i) {
-                current.points.push_back(
+                current->points.push_back(
                     math::cubicPoint(last, first, second, end, static_cast<double>(i) / count));
             }
             last = end;
@@ -118,19 +114,26 @@ void flattenPolylines(const VectorPath &path, const math::Affine2D &transform, d
             const auto count = math::arcSegments(sweep, radius * scale, tolerance);
             for (std::uint32_t i = 1; i <= count; ++i) {
                 const double angle = start + sweep * i / count;
-                current.points.push_back(apply(
+                current->points.push_back(apply(
                     transform, center + math::Vector2{std::cos(angle), std::sin(angle)} * radius));
             }
-            last = current.points.back();
+            last = current->points.back();
             break;
         }
         case PathVerb::close:
-            finish(output, current, true);
-            current.points.push_back(last);
+            finish(true);
+            current->points.push_back(last);
             break;
         }
     }
-    finish(output, current, false);
+    output.commit(false);
+}
+
+void flattenPolylines(const VectorPath &path, const math::Affine2D &transform, double tolerance,
+                      std::vector<Polyline> &output) {
+    PolylineBuffer buffer;
+    flattenPolylines(path, transform, tolerance, buffer);
+    output.insert(output.end(), buffer.view().begin(), buffer.view().end());
 }
 
 void appendFill(std::span<const Polyline> polylines, std::vector<LineSegment> &output) {

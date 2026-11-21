@@ -92,7 +92,7 @@ class DrawList {
     std::vector<PathDraw> paths_;
     std::vector<EffectDraw> effects_;
     std::vector<LineSegment> pathSegments_;
-    std::vector<Polyline> polylineScratch_;
+    PolylineBuffer polylineScratch_;
     std::vector<Polyline> outlineScratch_;
     std::uint16_t transform_ = identityTransform;
     std::uint16_t clip_ = noClip;

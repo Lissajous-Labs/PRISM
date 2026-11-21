@@ -230,8 +230,11 @@ ShadeOut shadeTexture(PrimitiveDesc d, device const float *payload, TransformRec
     return result;
 }
 
+float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, TransformRecord t,
+                        texture2d<float> texture, texture2d<float> blueNoise, texture2d<float> gradients, float2 p);
+
 ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gradients, texture2d<float> texture,
-                        float2 physical) {
+                        texture2d<float> blueNoise, float2 physical) {
     ShadeOut result;
     result.color = float4(0.0f);
     result.coverage = float3(0.0f);
@@ -244,6 +247,8 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
     uint kind = d.kindFlags & kindMask;
     if (kind >= kindGlyphAlpha && kind <= kindTexture) {
         result = shadeTexture(d, frame.payload, t, texture, local);
+    } else if (kind == kindHalftone) {
+        result.color = shadeHalftoneGpu(d, frame.payload, t, texture, blueNoise, gradients, local);
     } else if (kind == kindShadow) {
         LocalBox box = payloadBox(frame.payload, d.payloadOffset);
         float blurred = roundedBoxShadow(local - box.center, box.half_, d.params[1], d.params[0]);

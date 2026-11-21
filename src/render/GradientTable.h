@@ -15,6 +15,7 @@ struct GradientStop {
 class GradientTable {
   public:
     [[nodiscard]] std::uint32_t add(std::span<const GradientStop> stops, GradientSpace space);
+    [[nodiscard]] std::uint32_t addHdr(std::span<const float, 1024> premultipliedRgba);
     void clear() noexcept;
 
     [[nodiscard]] std::span<const float> rows() const noexcept { return rows_; }

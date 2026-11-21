@@ -5,6 +5,7 @@
 #include "math/SdfCurves.h"
 #include "math/SdfShapes.h"
 #include "render/FrameRecords.h"
+#include "render/HalftoneField.h"
 #include "render/PrimitiveDesc.h"
 #include "render/effects/EffectDraw.h"
 #include "render/vector/PathDraw.h"
@@ -63,6 +64,7 @@ class DrawList {
     void backdropBlur(RectF rect, math::CornerRadii radii, float sigma);
     void plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
                    std::uint32_t color);
+    void halftoneField(const HalftonePayload &field, std::uint32_t texture);
 
     [[nodiscard]] std::span<const PrimitiveDesc> primitives() const noexcept { return primitives_; }
     [[nodiscard]] std::span<const float> payload() const noexcept { return payload_; }

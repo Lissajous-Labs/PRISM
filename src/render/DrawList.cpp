@@ -3,6 +3,7 @@
 #include "math/WangFlatten.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace prism::render {
 namespace {
@@ -121,6 +122,20 @@ std::uint32_t DrawList::appendPayload(std::initializer_list<float> values) {
     const auto offset = static_cast<std::uint32_t>(payload_.size());
     payload_.insert(payload_.end(), values);
     return offset;
+}
+
+void DrawList::halftoneField(const HalftonePayload &field, std::uint32_t texture) {
+    auto &desc = emit(PrimitiveKind::halftoneField,
+                      {field.rect[0], field.rect[1], field.rect[2], field.rect[3]}, 0xFFFFFFFFu);
+    const auto offset = static_cast<std::uint32_t>(payload_.size());
+    payload_.resize(payload_.size() + sizeof(field) / sizeof(float));
+    std::memcpy(payload_.data() + offset, &field, sizeof(field));
+    desc.payloadOffset = offset;
+    desc.auxHandle = texture;
+    desc.gradientOffset = field.paletteRow;
+    const double power = field.spotParams[1];
+    const double g = std::tgamma(1 + 1 / power);
+    desc.params[0] = static_cast<float>(g * g / std::tgamma(1 + 2 / power));
 }
 
 void DrawList::roundedRect(RectF rect, math::CornerRadii radii, std::uint32_t color,

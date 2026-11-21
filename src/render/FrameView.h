@@ -16,6 +16,8 @@ struct TextureView {
     std::uint32_t height = 0;
     std::uint32_t channels = 4;
     std::span<const float> texels;
+    hal::PixelFormat format = hal::PixelFormat::rgba32Float;
+    std::uint64_t generation = 0;
 };
 
 struct FrameView {

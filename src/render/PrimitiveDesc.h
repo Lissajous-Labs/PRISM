@@ -18,10 +18,11 @@ enum class PrimitiveKind : std::uint8_t {
     glyphLcd = 8,
     glyphMtsdf = 9,
     texturedQuad = 10,
-    plotStrip = 11
+    plotStrip = 11,
+    halftoneField = 12
 };
 
-inline constexpr std::uint32_t primitiveKindCount = 12;
+inline constexpr std::uint32_t primitiveKindCount = 13;
 enum class GradientShape : std::uint8_t { linear = 0, radial = 1, conic = 2 };
 
 namespace flags {

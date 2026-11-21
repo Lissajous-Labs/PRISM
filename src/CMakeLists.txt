@@ -19,6 +19,8 @@ set(PRISM_METAL_SHADERS
     "${PROJECT_SOURCE_DIR}/shaders/metal/prism_common.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/prism_sdf.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/prism_shading.metal"
+    "${PROJECT_SOURCE_DIR}/shaders/metal/spot_coverage.metal"
+    "${PROJECT_SOURCE_DIR}/shaders/metal/halftone_field.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/uber_primitive.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/present.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/vector_raster.metal"
@@ -37,6 +39,8 @@ add_custom_command(OUTPUT "${PRISM_SHADER_SOURCE}"
 add_library(prism_render STATIC
     render/DrawList.cpp
     render/GradientTable.cpp
+    render/BlueNoise.cpp
+    render/HalftoneField.cpp
     render/PrimitiveShading.cpp
     render/UberBatches.cpp
     render/effects/BackdropBlur.cpp

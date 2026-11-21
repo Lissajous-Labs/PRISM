@@ -4,6 +4,7 @@
 #include "math/ShadowMath.h"
 #include "math/StemDarkening.h"
 #include "render/GradientParameter.h"
+#include "render/HalftoneField.h"
 #include "render/ShadingSupport.h"
 #include "render/TextureSampling.h"
 
@@ -281,6 +282,9 @@ ShadeResult shadePrimitive(const FrameView &frame, const PrimitiveDesc &desc, do
         break;
     case PrimitiveKind::plotStrip:
         result = shadePlot(frame, desc, transform, local);
+        break;
+    case PrimitiveKind::halftoneField:
+        result = solid(shadeHalftone(frame, desc, transform, local));
         break;
     }
     if (desc.clipId != noClip) {

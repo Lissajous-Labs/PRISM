@@ -67,6 +67,7 @@ constant uint kindGlyphLcd = 8;
 constant uint kindGlyphMtsdf = 9;
 constant uint kindTexture = 10;
 constant uint kindPlot = 11;
+constant uint kindHalftone = 12;
 
 float2 payloadPoint(device const float *payload, uint offset) {
     return float2(payload[offset], payload[offset + 1]);

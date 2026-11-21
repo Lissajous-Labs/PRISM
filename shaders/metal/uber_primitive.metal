@@ -63,7 +63,8 @@ ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives, dev
     frame.clips = clips;
     PrimitiveDesc d = primitives[in.primitive];
     uint slot = d.auxHandle == noTexture ? 0u : min(d.auxHandle, 7u);
-    return shadePrimitive(frame, d, gradients, textures[slot], in.position.xy);
+    uint noiseSlot = (d.kindFlags & kindMask) == kindHalftone ? as_type<uint>(payload[d.payloadOffset + 30]) : 0u;
+    return shadePrimitive(frame, d, gradients, textures[slot], textures[min(noiseSlot, 7u)], in.position.xy);
 }
 
 fragment float4 uberFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]],

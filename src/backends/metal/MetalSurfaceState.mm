@@ -44,13 +44,22 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
     const auto rows =
         static_cast<std::uint32_t>(view.gradientRows.size() / (render::gradientRowTexels * 4));
     gradients = rows ? uploadTexture(gpu, gradients, render::gradientRowTexels, rows, 4,
-                                     view.gradientRows, texelScratch)
+                                     view.gradientRows, texelScratch, hal::PixelFormat::rgba16Float)
                      : nil;
     for (std::size_t slot = 0; slot < textureSlots; ++slot) {
         if (slot < view.textures.size()) {
             const auto &texture = view.textures[slot];
-            textures[slot] = uploadTexture(gpu, textures[slot], texture.width, texture.height,
-                                           texture.channels, texture.texels, texelScratch);
+            const auto &previous = uploadedTextures[slot];
+            if (textures[slot] == nil || texture.generation == 0 ||
+                previous.generation != texture.generation ||
+                previous.texels.data() != texture.texels.data() ||
+                previous.width != texture.width || previous.height != texture.height ||
+                previous.channels != texture.channels || previous.format != texture.format) {
+                textures[slot] =
+                    uploadTexture(gpu, textures[slot], texture.width, texture.height,
+                                  texture.channels, texture.texels, texelScratch, texture.format);
+                uploadedTextures[slot] = texture;
+            }
         } else {
             textures[slot] = nil;
         }

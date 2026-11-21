@@ -37,6 +37,7 @@ struct MetalSurfaceState {
     id<MTLBuffer> readback = nil;
     id<MTLTexture> gradients = nil;
     std::array<id<MTLTexture>, textureSlots> textures{};
+    std::array<render::TextureView, textureSlots> uploadedTextures{};
     render::UberBatches batches;
     MetalPathEngine paths;
     MetalEffects effects;

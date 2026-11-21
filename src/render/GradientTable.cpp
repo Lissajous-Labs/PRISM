@@ -63,6 +63,18 @@ std::uint32_t GradientTable::add(std::span<const GradientStop> stops, GradientSp
     return static_cast<std::uint32_t>(keys_.size() - 1);
 }
 
+std::uint32_t GradientTable::addHdr(std::span<const float, 1024> premultipliedRgba) {
+    const auto bytes = std::as_bytes(premultipliedRgba);
+    const auto key = math::hash64(std::span<const std::byte>(bytes));
+    const auto found = std::find(keys_.begin(), keys_.end(), key);
+    if (found != keys_.end()) {
+        return static_cast<std::uint32_t>(found - keys_.begin());
+    }
+    keys_.push_back(key);
+    rows_.insert(rows_.end(), premultipliedRgba.begin(), premultipliedRgba.end());
+    return static_cast<std::uint32_t>(keys_.size() - 1);
+}
+
 void GradientTable::clear() noexcept {
     rows_.clear();
     keys_.clear();

@@ -177,7 +177,7 @@ constant float legendreNodes[6] = {-0.9324695142f, -0.6612093865f, -0.2386191861
 constant float legendreWeights[6] = {0.1713244924f, 0.3607615730f, 0.4679139346f, 0.4679139346f, 0.3607615730f, 0.1713244924f};
 
 int panelsFor(float extent, float sigma) {
-    return clamp(int(ceil(extent / (1.5f * sigma))), 1, 8);
+    return clamp(int(ceil(extent / (3.0f * sigma))), 1, 8);
 }
 
 float shadowDensity(float py, float y, float sigma) {
@@ -204,16 +204,8 @@ float roundedBoxShadow(float2 p, float2 half_, float radius, float sigma) {
     float middleLow = max(low, -straight);
     float middleHigh = min(high, straight);
     if (middleHigh > middleLow) {
-        int panels = panelsFor(middleHigh - middleLow, sigma);
-        float panelRadius = (middleHigh - middleLow) / (2.0f * float(panels));
-        float sum = 0.0f;
-        for (int panel = 0; panel < panels; ++panel) {
-            float middle = middleLow + float(2 * panel + 1) * panelRadius;
-            for (int k = 0; k < 6; ++k) {
-                sum += legendreWeights[k] * shadowDensity(p.y, middle + panelRadius * legendreNodes[k], sigma);
-            }
-        }
-        total += erfInterval(p.x, half_.x, sigma) * sum * panelRadius;
+        total += erfInterval(p.x, half_.x, sigma) *
+                 erfInterval(p.y - 0.5f * (middleLow + middleHigh), 0.5f * (middleHigh - middleLow), sigma);
     }
     for (int sideIndex = 0; sideIndex < 2; ++sideIndex) {
         float side = sideIndex == 0 ? 1.0f : -1.0f;

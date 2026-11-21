@@ -35,7 +35,7 @@ template <class Integrand>
 }
 
 [[nodiscard]] inline int panelsFor(double extent, double sigma) noexcept {
-    return std::clamp(static_cast<int>(std::ceil(extent / (1.5 * sigma))), 1, 8);
+    return std::clamp(static_cast<int>(std::ceil(extent / (3.0 * sigma))), 1, 8);
 }
 }
 
@@ -69,8 +69,8 @@ template <class Integrand>
     const double middleHigh = std::min(high, straight);
     if (middleHigh > middleLow) {
         total += detail::erfInterval(p.x, half.x, sigma) *
-                 detail::gaussLegendre(middleLow, middleHigh,
-                                       detail::panelsFor(middleHigh - middleLow, sigma), density);
+                 detail::erfInterval(p.y - 0.5 * (middleLow + middleHigh),
+                                     0.5 * (middleHigh - middleLow), sigma);
     }
     for (const double side : {1.0, -1.0}) {
         const double nearEdge = std::max(straight, side > 0 ? low : -high);

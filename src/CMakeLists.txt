@@ -68,3 +68,11 @@ if(APPLE)
     target_link_libraries(prism_backend_metal PUBLIC prism_render "-framework Metal" "-framework Foundation")
     target_compile_options(prism_backend_metal PRIVATE -fobjc-arc)
 endif()
+
+add_library(prism_text STATIC
+    text/Bidi.cpp
+    text/LineBreak.cpp
+    text/UnicodeClasses.cpp
+    text/UtfFastPath.cpp
+)
+target_link_libraries(prism_text PUBLIC prism_render)

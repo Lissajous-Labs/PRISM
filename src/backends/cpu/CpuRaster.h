@@ -3,6 +3,7 @@
 #include "hal/DamageRegion.h"
 #include "math/Color.h"
 #include "render/FrameView.h"
+#include "render/effects/BackdropBlur.h"
 #include "render/vector/PathTiler.h"
 
 #include <cstdint>
@@ -32,6 +33,14 @@ class CpuRaster {
         std::int32_t y1;
     };
 
+    struct Segment {
+        const math::PremultipliedColor *clear;
+        std::uint32_t primitiveBegin;
+        std::uint32_t primitiveEnd;
+        std::size_t pathBegin;
+        std::size_t pathEnd;
+    };
+
     std::uint32_t width_ = 0;
     std::uint32_t height_ = 0;
     std::uint32_t tilesX_ = 0;
@@ -43,6 +52,8 @@ class CpuRaster {
     std::vector<std::uint32_t> tileEntries_;
     render::PathTiler tiler_;
     std::vector<std::vector<float>> pathCoverage_;
+    render::FloatImage cropImage_;
+    render::FloatImage blurredImage_;
 
     void bin(const render::FrameView &frame);
     void rasterizePaths(const render::FrameView &frame);
@@ -50,6 +61,7 @@ class CpuRaster {
                                                      std::size_t path, std::int32_t x,
                                                      std::int32_t y,
                                                      math::PremultipliedColor color) const;
-    void shadeRect(const render::FrameView &frame, hal::Rect rect, math::PremultipliedColor clear);
+    void shadeRange(const render::FrameView &frame, hal::Rect rect, const Segment &segment);
+    void applyEffect(const render::EffectDraw &effect);
 };
 }

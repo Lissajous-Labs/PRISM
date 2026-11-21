@@ -110,18 +110,22 @@ math::PremultipliedColor CpuRaster::applyPath(const render::FrameView &frame, st
     return math::sourceOver(source, color);
 }
 
-void CpuRaster::shadeRect(const render::FrameView &frame, hal::Rect rect,
-                          math::PremultipliedColor clear) {
+void CpuRaster::shadeRange(const render::FrameView &frame, hal::Rect rect, const Segment &segment) {
     for (std::int32_t y = rect.y0; y < rect.y1; ++y) {
         for (std::int32_t x = rect.x0; x < rect.x1; ++x) {
             const std::size_t tile =
                 static_cast<std::size_t>(y / static_cast<std::int32_t>(rasterTileSize)) * tilesX_ +
                 static_cast<std::size_t>(x / static_cast<std::int32_t>(rasterTileSize));
-            math::PremultipliedColor color = clear;
-            std::size_t path = 0;
+            math::PremultipliedColor &target =
+                pixels_[static_cast<std::size_t>(y) * width_ + static_cast<std::size_t>(x)];
+            math::PremultipliedColor color = segment.clear ? *segment.clear : target;
+            std::size_t path = segment.pathBegin;
             for (std::uint32_t e = tileOffsets_[tile]; e < tileOffsets_[tile + 1]; ++e) {
                 const std::uint32_t index = tileEntries_[e];
-                while (path < frame.paths.size() && frame.paths[path].insertAfter <= index) {
+                if (index < segment.primitiveBegin || index >= segment.primitiveEnd) {
+                    continue;
+                }
+                while (path < segment.pathEnd && frame.paths[path].insertAfter <= index) {
                     color = applyPath(frame, path++, x, y, color);
                 }
                 const Bounds &b = bounds_[index];
@@ -132,10 +136,45 @@ void CpuRaster::shadeRect(const render::FrameView &frame, hal::Rect rect,
                 const auto shaded = render::shadePrimitive(frame, desc, x + 0.5, y + 0.5);
                 color = render::blend(desc.blend(), shaded, color);
             }
-            while (path < frame.paths.size()) {
+            while (path < segment.pathEnd) {
                 color = applyPath(frame, path++, x, y, color);
             }
-            pixels_[static_cast<std::size_t>(y) * width_ + static_cast<std::size_t>(x)] = color;
+            target = color;
+        }
+    }
+}
+
+void CpuRaster::applyEffect(const render::EffectDraw &effect) {
+    const hal::Rect crop = render::effectCrop(effect, width_, height_);
+    if (crop.empty()) {
+        return;
+    }
+    cropImage_.resize(static_cast<std::uint32_t>(crop.x1 - crop.x0),
+                      static_cast<std::uint32_t>(crop.y1 - crop.y0));
+    for (std::int32_t y = crop.y0; y < crop.y1; ++y) {
+        for (std::int32_t x = crop.x0; x < crop.x1; ++x) {
+            const auto &pixel =
+                pixels_[static_cast<std::size_t>(y) * width_ + static_cast<std::size_t>(x)];
+            cropImage_.at(static_cast<std::uint32_t>(x - crop.x0),
+                          static_cast<std::uint32_t>(y - crop.y0)) = {
+                static_cast<float>(pixel.r), static_cast<float>(pixel.g),
+                static_cast<float>(pixel.b), static_cast<float>(pixel.a)};
+        }
+    }
+    render::blurCrop(cropImage_, blurredImage_, effect.sigma);
+    for (std::int32_t y = crop.y0; y < crop.y1; ++y) {
+        for (std::int32_t x = crop.x0; x < crop.x1; ++x) {
+            const double mask = render::effectMask(effect, x + 0.5, y + 0.5);
+            if (mask <= 0) {
+                continue;
+            }
+            auto &pixel =
+                pixels_[static_cast<std::size_t>(y) * width_ + static_cast<std::size_t>(x)];
+            const auto &blurred = blurredImage_.at(static_cast<std::uint32_t>(x - crop.x0),
+                                                   static_cast<std::uint32_t>(y - crop.y0));
+            pixel = {
+                pixel.r + (blurred[0] - pixel.r) * mask, pixel.g + (blurred[1] - pixel.g) * mask,
+                pixel.b + (blurred[2] - pixel.b) * mask, pixel.a + (blurred[3] - pixel.a) * mask};
         }
     }
 }
@@ -146,12 +185,34 @@ void CpuRaster::render(const render::FrameView &frame, const hal::DamageRegion &
     rasterizePaths(frame);
     const hal::Rect viewport{0, 0, static_cast<std::int32_t>(width_),
                              static_cast<std::int32_t>(height_)};
-    damage.forEachRect([&](hal::Rect rect) {
-        const hal::Rect clipped{std::max(rect.x0, viewport.x0), std::max(rect.y0, viewport.y0),
-                                std::min(rect.x1, viewport.x1), std::min(rect.y1, viewport.y1)};
-        if (!clipped.empty()) {
-            shadeRect(frame, clipped, clear);
+    const auto primitiveCount = static_cast<std::uint32_t>(frame.primitives.size());
+    if (frame.effects.empty()) {
+        const Segment whole{&clear, 0, primitiveCount, 0, frame.paths.size()};
+        damage.forEachRect([&](hal::Rect rect) {
+            const hal::Rect clipped{std::max(rect.x0, viewport.x0), std::max(rect.y0, viewport.y0),
+                                    std::min(rect.x1, viewport.x1), std::min(rect.y1, viewport.y1)};
+            if (!clipped.empty()) {
+                shadeRange(frame, clipped, whole);
+            }
+        });
+        return;
+    }
+    Segment segment{&clear, 0, 0, 0, 0};
+    for (std::size_t e = 0; e <= frame.effects.size(); ++e) {
+        segment.primitiveEnd =
+            e < frame.effects.size() ? frame.effects[e].insertAfter : primitiveCount;
+        segment.pathEnd = segment.pathBegin;
+        while (segment.pathEnd < frame.paths.size() &&
+               (e == frame.effects.size() ||
+                frame.paths[segment.pathEnd].insertAfter <= segment.primitiveEnd)) {
+            ++segment.pathEnd;
         }
-    });
+        shadeRange(frame, viewport, segment);
+        if (e < frame.effects.size()) {
+            applyEffect(frame.effects[e]);
+        }
+        segment = {nullptr, segment.primitiveEnd, segment.primitiveEnd, segment.pathEnd,
+                   segment.pathEnd};
+    }
 }
 }

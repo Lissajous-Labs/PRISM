@@ -37,6 +37,7 @@ add_library(prism_render STATIC
     render/GradientTable.cpp
     render/PrimitiveShading.cpp
     render/UberBatches.cpp
+    render/effects/BackdropBlur.cpp
     render/effects/Bloom.cpp
     render/effects/DualKawase.cpp
     render/effects/GaussianBlur.cpp

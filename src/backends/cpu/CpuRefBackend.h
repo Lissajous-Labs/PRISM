@@ -4,6 +4,7 @@
 #include "render/RenderSurface.h"
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace prism::backends {
@@ -25,6 +26,9 @@ class CpuRefSurface final : public render::RenderSurface {
     hal::Extent extent_;
     CpuRaster raster_;
     std::vector<float> linear_;
+    std::optional<render::BloomSettings> bloom_;
+    render::FloatImage sceneImage_;
+    render::FloatImage bloomImage_;
     bool lost_ = false;
 };
 

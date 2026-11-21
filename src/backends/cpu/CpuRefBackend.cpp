@@ -23,6 +23,7 @@ bool CpuRefSurface::render(const render::FrameRequest &request) {
         return false;
     }
     raster_.render(request.view, *request.damage, request.clear);
+    bloom_ = request.bloom ? std::optional(*request.bloom) : std::nullopt;
     return true;
 }
 
@@ -31,11 +32,25 @@ bool CpuRefSurface::readback(std::span<float> rgba) {
     if (lost_ || rgba.size() != pixels.size() * 4) {
         return false;
     }
+    if (!bloom_) {
+        for (std::size_t i = 0; i < pixels.size(); ++i) {
+            rgba[i * 4] = static_cast<float>(pixels[i].r);
+            rgba[i * 4 + 1] = static_cast<float>(pixels[i].g);
+            rgba[i * 4 + 2] = static_cast<float>(pixels[i].b);
+            rgba[i * 4 + 3] = static_cast<float>(pixels[i].a);
+        }
+        return true;
+    }
+    sceneImage_.resize(extent_.width, extent_.height);
     for (std::size_t i = 0; i < pixels.size(); ++i) {
-        rgba[i * 4] = static_cast<float>(pixels[i].r);
-        rgba[i * 4 + 1] = static_cast<float>(pixels[i].g);
-        rgba[i * 4 + 2] = static_cast<float>(pixels[i].b);
-        rgba[i * 4 + 3] = static_cast<float>(pixels[i].a);
+        sceneImage_.pixels[i] = {static_cast<float>(pixels[i].r), static_cast<float>(pixels[i].g),
+                                 static_cast<float>(pixels[i].b), static_cast<float>(pixels[i].a)};
+    }
+    render::applyBloom(sceneImage_, bloomImage_, *bloom_);
+    for (std::size_t i = 0; i < pixels.size(); ++i) {
+        for (std::size_t c = 0; c < 4; ++c) {
+            rgba[i * 4 + c] = bloomImage_.pixels[i][c];
+        }
     }
     return true;
 }

@@ -20,8 +20,20 @@ if(PRISM_SANITIZE)
     target_link_options(prism_options INTERFACE -fsanitize=address,undefined)
 endif()
 
+add_executable(prism_check_comments tools/lint/CheckNoComments.cpp)
+target_link_libraries(prism_check_comments PRIVATE prism_options)
+add_custom_target(lint
+    COMMAND prism_check_comments "${CMAKE_CURRENT_SOURCE_DIR}"
+    DEPENDS prism_check_comments
+)
+
 if(BUILD_TESTING)
     add_executable(prism_foundation_tests tests/unit/FoundationTests.cpp)
     target_link_libraries(prism_foundation_tests PRIVATE prism_options)
     add_test(NAME foundation COMMAND prism_foundation_tests)
+    add_test(NAME no_comments COMMAND prism_check_comments "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME comment_scanner COMMAND prism_check_comments --self-test)
+    if(UNIX)
+        add_test(NAME commit_messages COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/tools/lint/CheckCommitMsg.sh" --self-test)
+    endif()
 endif()

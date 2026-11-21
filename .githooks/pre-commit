@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+root=$(git rev-parse --show-toplevel)
+cmake -S "$root" -B "$root/build/hooks" -DBUILD_TESTING=OFF
+cmake --build "$root/build/hooks" --target prism_check_comments
+snapshot=$(mktemp -d)
+trap 'rm -rf "$snapshot"' EXIT HUP INT TERM
+git checkout-index --all --prefix="$snapshot/"
+"$root/build/hooks/prism_check_comments" "$snapshot"

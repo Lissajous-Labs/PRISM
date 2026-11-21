@@ -112,15 +112,19 @@ target_link_libraries(prism_layout PUBLIC prism_dom)
 
 if(APPLE)
     add_library(prism_host STATIC
+        host/AccessibilityBridge.cpp
         host/HostComponent.cpp
         host/PassiveSurfaceHost_mac.mm
+        host/ProcessorState.cpp
     )
-    target_link_libraries(prism_host PUBLIC prism_backend_metal "-framework AppKit" "-framework QuartzCore")
+    target_link_libraries(prism_host PUBLIC prism_backend_metal prism_layout "-framework AppKit" "-framework QuartzCore")
     target_compile_options(prism_host PRIVATE -fobjc-arc)
 else()
     add_library(prism_host STATIC
+        host/AccessibilityBridge.cpp
         host/HostComponent.cpp
         host/PassiveSurfaceHost_portable.cpp
+        host/ProcessorState.cpp
     )
-    target_link_libraries(prism_host PUBLIC prism_render)
+    target_link_libraries(prism_host PUBLIC prism_render prism_layout)
 endif()

@@ -56,8 +56,8 @@ struct CoveragePolygon {
         const Vector2 a = p.points[i] - center, b = p.points[(i + 1) % p.count] - center;
         const Vector2 delta = b - a;
         const double aa = dot(delta, delta), bb = 2 * dot(a, delta), cc = dot(a, a) - rr;
-        std::array<double, 4> cuts{0, 1, 0, 0};
-        std::size_t count = 2;
+        std::array<double, 4> cuts{0, 0, 0, 0};
+        std::size_t count = 1;
         const double discriminant = bb * bb - 4 * aa * cc;
         if (aa > 0 && discriminant > 0) {
             const double root = std::sqrt(discriminant);
@@ -67,7 +67,7 @@ struct CoveragePolygon {
                 }
             }
         }
-        std::sort(cuts.begin(), cuts.begin() + static_cast<std::ptrdiff_t>(count));
+        cuts[count++] = 1;
         for (std::size_t j = 1; j < count; ++j) {
             const Vector2 u = a + delta * cuts[j - 1], v = a + delta * cuts[j];
             const Vector2 midpoint = (u + v) * 0.5;

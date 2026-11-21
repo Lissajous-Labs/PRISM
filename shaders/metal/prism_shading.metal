@@ -22,6 +22,18 @@ LocalBox payloadBox(device const float *payload, uint offset) {
     return box;
 }
 
+LocalBox rectBox(PrimitiveDesc d) {
+    float margin = (d.kindFlags & kindMask) == kindShadow && (d.kindFlags & insetFlag) == 0u
+                       ? 3 * d.params[0] + aaMargin
+                       : aaMargin;
+    float2 low = float2(d.bounds[0] + margin, d.bounds[1] + margin);
+    float2 high = float2(d.bounds[2] - margin, d.bounds[3] - margin);
+    LocalBox box;
+    box.center = (low + high) * 0.5f;
+    box.half_ = (high - low) * 0.5f;
+    return box;
+}
+
 float4 primitiveRadii(PrimitiveDesc d) {
     return float4(d.params[0], d.params[1], d.params[2], d.params[3]);
 }
@@ -29,6 +41,35 @@ float4 primitiveRadii(PrimitiveDesc d) {
 float4 innerRadii(float4 radii, float4 widths) {
     return float4(max(0.0f, radii.x - max(widths.y, widths.z)), max(0.0f, radii.y - max(widths.w, widths.z)),
                   max(0.0f, radii.z - max(widths.y, widths.x)), max(0.0f, radii.w - max(widths.w, widths.x)));
+}
+
+struct RoundedShape {
+    float2 center;
+    float2 half_;
+    float4 radii;
+};
+
+bool roundedShape(int mode, PrimitiveDesc d, device const float *payload, thread RoundedShape &shape) {
+    if (mode == fieldPrimitive && (d.kindFlags & kindMask) != kindRoundedRect) {
+        return false;
+    }
+    uint offset = d.payloadOffset;
+    LocalBox box = rectBox(d);
+    if (mode == fieldInnerBorder) {
+        float4 widths = float4(payload[offset], payload[offset + 1], payload[offset + 2], payload[offset + 3]);
+        shape.center = box.center + float2(widths.x - widths.z, widths.y - widths.w) * 0.5f;
+        shape.half_ = max(box.half_ - float2(widths.x + widths.z, widths.y + widths.w) * 0.5f, float2(0.0f));
+        shape.radii = innerRadii(primitiveRadii(d), widths);
+        return true;
+    }
+    shape.center = box.center;
+    shape.half_ = box.half_;
+    if (mode == fieldInsetBox) {
+        shape.radii = float4(d.params[1]);
+        return true;
+    }
+    shape.radii = primitiveRadii(d);
+    return true;
 }
 
 float2 plotBand(PrimitiveDesc d, device const float *payload, texture2d<float> strip, float2 p) {
@@ -53,24 +94,13 @@ float plotField(PrimitiveDesc d, device const float *payload, texture2d<float> s
 float evaluateField(int mode, PrimitiveDesc d, device const float *payload, texture2d<float> strip, float2 p) {
     uint kind = d.kindFlags & kindMask;
     uint offset = d.payloadOffset;
-    if (mode == fieldInnerBorder) {
-        LocalBox box = payloadBox(payload, offset);
-        float4 widths = float4(payload[offset + 4], payload[offset + 5], payload[offset + 6], payload[offset + 7]);
-        float2 innerCenter = box.center + float2(widths.x - widths.z, widths.y - widths.w) * 0.5f;
-        float2 innerHalf = max(box.half_ - float2(widths.x + widths.z, widths.y + widths.w) * 0.5f, float2(0.0f));
-        return sdRoundedRect(p - innerCenter, innerHalf, innerRadii(primitiveRadii(d), widths));
-    }
-    if (mode == fieldInsetBox) {
-        LocalBox box = payloadBox(payload, offset);
-        return sdRoundedRect(p - box.center, box.half_, float4(d.params[1]));
+    RoundedShape shape;
+    if (roundedShape(mode, d, payload, shape)) {
+        return sdRoundedRect(p - shape.center, shape.half_, shape.radii);
     }
     switch (kind) {
-    case kindRoundedRect: {
-        LocalBox box = payloadBox(payload, offset);
-        return sdRoundedRect(p - box.center, box.half_, primitiveRadii(d));
-    }
     case kindSquircle: {
-        LocalBox box = payloadBox(payload, offset);
+        LocalBox box = rectBox(d);
         return sdSuperellipse(p - box.center, box.half_, d.params[0]);
     }
     case kindArc:
@@ -85,6 +115,9 @@ float evaluateField(int mode, PrimitiveDesc d, device const float *payload, text
         return sdRoundedTriangle(p, payloadPoint(payload, offset), payloadPoint(payload, offset + 2),
                                  payloadPoint(payload, offset + 4), d.params[0]);
     case kindPlot:
+        if (!fullShading) {
+            return -1.0f;
+        }
         return plotField(d, payload, strip, p);
     default:
         return -1.0f;
@@ -93,23 +126,36 @@ float evaluateField(int mode, PrimitiveDesc d, device const float *payload, text
 
 float fieldCoverage(int mode, TransformRecord t, PrimitiveDesc d, device const float *payload,
                     texture2d<float> strip, float2 local) {
-    float distance = evaluateField(mode, d, payload, strip, local);
     float reach = 0.71f * sqrt(t.inverse[0] * t.inverse[0] + t.inverse[1] * t.inverse[1] +
                                t.inverse[2] * t.inverse[2] + t.inverse[3] * t.inverse[3]);
-    if (abs(distance) >= reach) {
-        return distance < 0.0f ? 1.0f : 0.0f;
-    }
-    if (mode == fieldPrimitive && (d.kindFlags & kindMask) == kindPlot) {
+    float distance;
+    float2 gradient;
+    RoundedShape shape;
+    if (roundedShape(mode, d, payload, shape)) {
+        float2 p = local - shape.center;
+        distance = sdRoundedRect(p, shape.half_, shape.radii);
+        if (abs(distance) >= reach) {
+            return distance < 0.0f ? 1.0f : 0.0f;
+        }
+        gradient = sdRoundedRectGradient(p, shape.half_, shape.radii);
+    } else if (fullShading && (d.kindFlags & kindMask) == kindPlot) {
         float2 band = plotBand(d, payload, strip, local);
-        float2 axis = float2(t.inverse[1], t.inverse[3]) * (band.x - local.y > local.y - band.y ? -1.0f : 1.0f);
-        float axisNorm = length(axis);
-        return axisNorm > 1e-12f ? boxCoverage(distance / axisNorm, axis) : (distance <= 0.0f ? 1.0f : 0.0f);
+        distance = max(band.x - local.y, local.y - band.y) - d.params[0] * 0.5f;
+        if (abs(distance) >= reach) {
+            return distance < 0.0f ? 1.0f : 0.0f;
+        }
+        gradient = float2(0.0f, band.x - local.y > local.y - band.y ? -1.0f : 1.0f);
+    } else {
+        distance = evaluateField(mode, d, payload, strip, local);
+        if (abs(distance) >= reach) {
+            return distance < 0.0f ? 1.0f : 0.0f;
+        }
+        gradient = float2(
+            evaluateField(mode, d, payload, strip, local + float2(gradientStep, 0.0f)) -
+                evaluateField(mode, d, payload, strip, local - float2(gradientStep, 0.0f)),
+            evaluateField(mode, d, payload, strip, local + float2(0.0f, gradientStep)) -
+                evaluateField(mode, d, payload, strip, local - float2(0.0f, gradientStep))) / (2.0f * gradientStep);
     }
-    float2 gradient = float2(
-        evaluateField(mode, d, payload, strip, local + float2(gradientStep, 0.0f)) -
-            evaluateField(mode, d, payload, strip, local - float2(gradientStep, 0.0f)),
-        evaluateField(mode, d, payload, strip, local + float2(0.0f, gradientStep)) -
-            evaluateField(mode, d, payload, strip, local - float2(0.0f, gradientStep))) / (2.0f * gradientStep);
     float2 physical = float2(t.inverse[0] * gradient.x + t.inverse[1] * gradient.y,
                              t.inverse[2] * gradient.x + t.inverse[3] * gradient.y);
     float norm = length(physical);
@@ -259,14 +305,14 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
         return result;
     }
     uint kind = d.kindFlags & kindMask;
-    if (kind >= kindGlyphAlpha && kind <= kindTexture) {
+    if (texturedShading && kind >= kindGlyphAlpha && kind <= kindTexture) {
         result = shadeTexture(d, frame.payload, t, texture, local);
-    } else if (kind == kindHalftone) {
+    } else if (fullShading && kind == kindHalftone) {
         result.color = shadeHalftoneGpu(d, frame.payload, frame.halftoneCells, t, local);
-    } else if (kind == kindFormant) {
+    } else if (fullShading && kind == kindFormant) {
         result.color = shadeFormantGpu(d, frame.payload, t, local, texture, physical);
-    } else if (kind == kindShadow) {
-        LocalBox box = payloadBox(frame.payload, d.payloadOffset);
+    } else if (analyticShading && kind == kindShadow) {
+        LocalBox box = rectBox(d);
         float blurred = d.auxHandle != noTexture && (d.kindFlags & insetFlag) == 0u
                             ? sampleShadowSprite(frame.shadowTable, frame.shadowSprites, d.auxHandle,
                                                  local - box.center)
@@ -276,10 +322,10 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
             alpha = fieldCoverage(fieldInsetBox, t, d, frame.payload, texture, local) * (1.0f - blurred);
         }
         result.color = decodeColor(d.color) * alpha;
-    } else {
+    } else if (analyticShading) {
         float outer = fieldCoverage(fieldPrimitive, t, d, frame.payload, texture, local);
         float4 fill = fillColor(d, frame.payload, gradients, local);
-        if (kind == kindPlot && d.params[3] > 0.0f) {
+        if (fullShading && kind == kindPlot && d.params[3] > 0.0f) {
             LocalBox box = payloadBox(frame.payload, d.payloadOffset);
             float u = (local.x - box.center.x + box.half_.x) / (2.0f * box.half_.x);
             fill *= smoothstep(0.0f, d.params[3], u) * smoothstep(0.0f, d.params[3], 1.0f - u);

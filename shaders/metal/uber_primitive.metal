@@ -17,7 +17,7 @@ vertex VertexOut uberVertex(uint vertexId [[vertex_id]], uint instanceId [[insta
                             device const TransformRecord *transforms [[buffer(2)]],
                             constant FrameUniforms &uniforms [[buffer(4)]],
                             device const uint *indices [[buffer(5)]]) {
-    uint index = indices[instanceId];
+    uint index = uniforms.indexed != 0u ? indices[instanceId] : instanceId;
     PrimitiveDesc d = primitives[index];
     float2 corner = quadCorners[vertexId];
     float2 local = float2(mix(d.bounds[0], d.bounds[2], corner.x), mix(d.bounds[1], d.bounds[3], corner.y));
@@ -47,13 +47,13 @@ vertex VertexOut uberCoreVertex(uint vertexId [[vertex_id]], uint instanceId [[i
     uint index = indices[instanceId];
     PrimitiveDesc d = primitives[index];
     uint offset = d.payloadOffset;
-    float inset = max(max(d.params[0], d.params[1]), max(d.params[2], d.params[3])) + 1.0f;
+    float inset = max(max(d.params[0], d.params[1]), max(d.params[2], d.params[3])) * 0.29289322f + 1.0f + aaMargin;
     float4 edges = float4(inset);
     if ((d.kindFlags & borderFlag) != 0u) {
-        edges += float4(payload[offset + 4], payload[offset + 5], payload[offset + 6], payload[offset + 7]);
+        edges += float4(payload[offset], payload[offset + 1], payload[offset + 2], payload[offset + 3]);
     }
-    float2 low = float2(payload[offset] + edges.x, payload[offset + 1] + edges.y);
-    float2 high = max(float2(payload[offset + 2] - edges.z, payload[offset + 3] - edges.w), low);
+    float2 low = float2(d.bounds[0] + edges.x, d.bounds[1] + edges.y);
+    float2 high = max(float2(d.bounds[2] - edges.z, d.bounds[3] - edges.w), low);
     float2 corner = quadCorners[vertexId];
     float2 physical = applyForward(transforms[d.transformId], mix(low, high, corner)) - uniforms.origin;
     VertexOut out;

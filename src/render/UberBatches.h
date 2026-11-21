@@ -13,8 +13,15 @@ enum class UberPipeline : std::uint8_t {
     additive,
     replace,
     multiply,
-    subpixel
+    subpixel,
+    analytic,
+    textured
 };
+
+[[nodiscard]] constexpr bool blendsSourceOver(UberPipeline pipeline) noexcept {
+    return pipeline == UberPipeline::sourceOver || pipeline == UberPipeline::analytic ||
+           pipeline == UberPipeline::textured;
+}
 
 struct DrawRun {
     UberPipeline pipeline;

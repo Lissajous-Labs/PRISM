@@ -18,8 +18,6 @@ RectF pointsBounds(std::initializer_list<math::Vector2> points, float margin) {
     }
     return {bounds.x0 - margin, bounds.y0 - margin, bounds.x1 + margin, bounds.y1 + margin};
 }
-
-constexpr float aaMargin = 1.5f;
 }
 
 DrawList::DrawList() { clear(); }
@@ -181,13 +179,12 @@ void DrawList::roundedRect(RectF rect, math::CornerRadii radii, std::uint32_t co
     desc.params[1] = static_cast<float>(clamped.bottomRight);
     desc.params[2] = static_cast<float>(clamped.topLeft);
     desc.params[3] = static_cast<float>(clamped.bottomLeft);
-    desc.payloadOffset = appendPayload({rect.x0, rect.y0, rect.x1, rect.y1});
     if (border) {
         desc.kindFlags |= flags::border;
         desc.borderColor = border->color;
-        static_cast<void>(appendPayload(
+        desc.payloadOffset = appendPayload(
             {static_cast<float>(border->widths.left), static_cast<float>(border->widths.top),
-             static_cast<float>(border->widths.right), static_cast<float>(border->widths.bottom)}));
+             static_cast<float>(border->widths.right), static_cast<float>(border->widths.bottom)});
     }
     const bool solid = (color >> 24) == 255 && (!border || (border->color >> 24) == 255);
     if (solid && blend_ == hal::BlendMode::sourceOver && gradientRow_ == noTexture &&
@@ -201,7 +198,6 @@ void DrawList::squircle(RectF rect, float power, std::uint32_t color) {
         PrimitiveKind::squircle,
         {rect.x0 - aaMargin, rect.y0 - aaMargin, rect.x1 + aaMargin, rect.y1 + aaMargin}, color);
     desc.params[0] = power;
-    desc.payloadOffset = appendPayload({rect.x0, rect.y0, rect.x1, rect.y1});
 }
 
 void DrawList::arc(math::Vector2 center, float radius, float thickness, float midAngle,
@@ -258,7 +254,6 @@ void DrawList::boxShadow(RectF box, float radius, float sigma, std::uint32_t col
     }
     desc.params[0] = sigma;
     desc.params[1] = radius;
-    desc.payloadOffset = appendPayload({box.x0, box.y0, box.x1, box.y1});
 }
 
 void DrawList::texturedQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint32_t texture,

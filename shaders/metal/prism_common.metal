@@ -33,7 +33,7 @@ struct FrameUniforms {
     uint maxDepth;
     uint textureCount;
     uint countFragments;
-    uint gradientRows;
+    uint indexed;
     float2 origin;
 };
 
@@ -66,6 +66,12 @@ constant uint insetFlag = 1u << 16;
 constant uint noClip = 0;
 constant uint noTexture = 0xFFFFFFFFu;
 constant float gradientStep = 1.0f / 64.0f;
+constant float aaMargin = 1.5f;
+constant uint shadingClassConstant [[function_constant(0)]];
+constant uint shadingClass = is_function_constant_defined(shadingClassConstant) ? shadingClassConstant : 0u;
+constant bool fullShading = shadingClass == 0u;
+constant bool analyticShading = shadingClass != 2u;
+constant bool texturedShading = shadingClass != 1u;
 
 constant uint kindRoundedRect = 0;
 constant uint kindSquircle = 1;

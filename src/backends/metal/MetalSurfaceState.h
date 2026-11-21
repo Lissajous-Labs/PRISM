@@ -22,7 +22,7 @@ struct FrameUniforms {
     std::uint32_t maxDepth;
     std::uint32_t textureCount;
     std::uint32_t countFragments;
-    std::uint32_t gradientRows;
+    std::uint32_t indexed;
     float origin[2];
 };
 
@@ -59,7 +59,6 @@ struct MetalSurfaceState {
     }
     id<MTLTexture> output = nil;
     bool bloomActive = false;
-    std::vector<std::uint32_t> indexScratch;
     std::vector<float> texelScratch;
     struct ScratchRange {
         std::uint32_t opaque;

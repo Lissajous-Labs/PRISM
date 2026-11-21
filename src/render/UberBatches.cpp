@@ -7,7 +7,13 @@ UberPipeline pipelineFor(const PrimitiveDesc &desc) noexcept {
     }
     switch (desc.blend()) {
     case hal::BlendMode::sourceOver:
-        return UberPipeline::sourceOver;
+        if (desc.kind() <= PrimitiveKind::boxShadow) {
+            return UberPipeline::analytic;
+        }
+        return desc.kind() >= PrimitiveKind::glyphAlpha &&
+                       desc.kind() <= PrimitiveKind::texturedQuad
+                   ? UberPipeline::textured
+                   : UberPipeline::sourceOver;
     case hal::BlendMode::screen:
         return UberPipeline::screen;
     case hal::BlendMode::additive:

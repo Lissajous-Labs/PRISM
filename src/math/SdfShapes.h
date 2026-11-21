@@ -49,6 +49,18 @@ struct RoundedRectShape {
     return std::min(std::max(q.x, q.y), 0.0) + length(maximum(q, 0)) - radius;
 }
 
+[[nodiscard]] inline Vector2 roundedRectGradient(Vector2 p, Vector2 half,
+                                                 CornerRadii radii) noexcept {
+    const double radius = quadrantRadius(p, radii);
+    const Vector2 side{p.x > 0 ? 1.0 : -1.0, p.y > 0 ? 1.0 : -1.0};
+    const Vector2 q = absolute(p) - half + Vector2{radius, radius};
+    if (q.x > 0 && q.y > 0) {
+        const double norm = length(q);
+        return {side.x * q.x / norm, side.y * q.y / norm};
+    }
+    return q.x > q.y ? Vector2{side.x, 0} : Vector2{0, side.y};
+}
+
 [[nodiscard]] inline double box(Vector2 p, Vector2 half) noexcept {
     return roundedRect(p, half, {0, 0, 0, 0});
 }

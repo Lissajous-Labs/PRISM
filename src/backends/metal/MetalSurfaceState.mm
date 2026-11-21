@@ -83,6 +83,7 @@ void MetalSurfaceState::encodeScratch(id<MTLCommandBuffer> commands, FrameUnifor
     pass.depthAttachment.storeAction = MTLStoreActionDontCare;
     uniforms.viewport[0] = static_cast<float>(scratchColor.width);
     uniforms.viewport[1] = static_cast<float>(scratchColor.height);
+    uniforms.indexed = 1;
     const auto *descriptors = static_cast<const render::PrimitiveDesc *>(primitives.contents);
     const auto overlaps = [&](std::uint32_t index, const hal::Rect &rect) {
         const hal::Rect &b = primitiveBounds[index];
@@ -159,7 +160,7 @@ void MetalSurfaceState::encodeScratch(id<MTLCommandBuffer> commands, FrameUnifor
                 ++cursor;
             }
             id<MTLRenderPipelineState> pipeline =
-                counting && pipelineKind == render::UberPipeline::sourceOver
+                counting && render::blendsSourceOver(pipelineKind)
                     ? device->counting
                     : device->pipelines[static_cast<std::size_t>(pipelineKind)];
             if (pipeline == nil) {
@@ -202,12 +203,11 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
     upload(gpu, transforms, view.transforms.data(), view.transforms.size_bytes());
     upload(gpu, clips, view.clips.data(), view.clips.size_bytes());
     batches.build(view.primitives, earlyDepth && view.effects.empty());
-    indexScratch.assign(batches.opaqueIndices().begin(), batches.opaqueIndices().end());
-    indexScratch.insert(indexScratch.end(), batches.ordered().begin(), batches.ordered().end());
-    upload(gpu, indices, indexScratch.data(), indexScratch.size() * sizeof(std::uint32_t));
+    const auto opaque = batches.opaqueIndices();
+    upload(gpu, indices, opaque.data(), opaque.size_bytes());
     uploadBytes = view.primitives.size_bytes() + view.payload.size_bytes() +
-                  view.transforms.size_bytes() + view.clips.size_bytes() +
-                  indexScratch.size() * sizeof(std::uint32_t) + view.gradientRows.size() * 2;
+                  view.transforms.size_bytes() + view.clips.size_bytes() + opaque.size_bytes() +
+                  view.gradientRows.size() * 2;
     drawCalls = 0;
     primitiveBounds.resize(view.primitives.size());
     for (std::size_t i = 0; i < view.primitives.size(); ++i) {
@@ -317,7 +317,6 @@ id<MTLRenderCommandEncoder> MetalSurfaceState::beginPass(id<MTLCommandBuffer> co
 
 void MetalSurfaceState::drawOrdered(id<MTLRenderCommandEncoder> encoder, std::uint32_t from,
                                     std::uint32_t to) {
-    const auto opaqueCount = static_cast<NSUInteger>(batches.opaqueIndices().size());
     [encoder setDepthStencilState:device->depthTest];
     for (const render::DrawRun &run : batches.runs()) {
         const std::uint32_t start = std::max(run.first, from);
@@ -327,7 +326,7 @@ void MetalSurfaceState::drawOrdered(id<MTLRenderCommandEncoder> encoder, std::ui
         }
         id<MTLRenderPipelineState> pipeline =
             device->pipelines[static_cast<std::size_t>(run.pipeline)];
-        if (counting && run.pipeline == render::UberPipeline::sourceOver) {
+        if (counting && render::blendsSourceOver(run.pipeline)) {
             pipeline = device->counting;
         }
         if (pipeline == nil) {
@@ -336,7 +335,7 @@ void MetalSurfaceState::drawOrdered(id<MTLRenderCommandEncoder> encoder, std::ui
         const auto *descriptors = static_cast<const render::PrimitiveDesc *>(primitives.contents);
         std::uint32_t cursor = start;
         while (cursor < end) {
-            const auto index = indexScratch[opaqueCount + cursor];
+            const auto index = cursor;
             if (descriptors[index].kind() == render::PrimitiveKind::wavetable3d) {
                 drawWavetable3d(encoder, *device, descriptors[index], index, wavetableLine(index));
                 ++drawCalls;
@@ -344,8 +343,8 @@ void MetalSurfaceState::drawOrdered(id<MTLRenderCommandEncoder> encoder, std::ui
                 continue;
             }
             const auto begin = cursor++;
-            while (cursor < end && descriptors[indexScratch[opaqueCount + cursor]].kind() !=
-                                       render::PrimitiveKind::wavetable3d) {
+            while (cursor < end &&
+                   descriptors[cursor].kind() != render::PrimitiveKind::wavetable3d) {
                 ++cursor;
             }
             [encoder setRenderPipelineState:pipeline];
@@ -354,7 +353,7 @@ void MetalSurfaceState::drawOrdered(id<MTLRenderCommandEncoder> encoder, std::ui
                         vertexStart:0
                         vertexCount:6
                       instanceCount:cursor - begin
-                       baseInstance:opaqueCount + begin];
+                       baseInstance:begin];
         }
     }
 }

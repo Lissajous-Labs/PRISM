@@ -2,6 +2,7 @@
 
 #include "hal/HalTypes.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -25,6 +26,7 @@ enum class PrimitiveKind : std::uint8_t {
 };
 
 inline constexpr std::uint32_t primitiveKindCount = 15;
+inline constexpr float aaMargin = 1.5f;
 enum class GradientShape : std::uint8_t { linear = 0, radial = 1, conic = 2 };
 
 namespace flags {
@@ -62,6 +64,14 @@ struct alignas(64) PrimitiveDesc {
     }
     [[nodiscard]] constexpr bool has(std::uint32_t flag) const noexcept {
         return (kindFlags & flag) != 0;
+    }
+    [[nodiscard]] constexpr float shapeMargin() const noexcept {
+        return kind() == PrimitiveKind::boxShadow && !has(flags::inset) ? 3 * params[0] + aaMargin
+                                                                        : aaMargin;
+    }
+    [[nodiscard]] constexpr std::array<float, 4> shapeRect() const noexcept {
+        const float margin = shapeMargin();
+        return {bounds[0] + margin, bounds[1] + margin, bounds[2] - margin, bounds[3] - margin};
     }
 };
 

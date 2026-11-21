@@ -8,7 +8,7 @@
 #include <memory>
 
 namespace prism::backends {
-inline constexpr std::size_t uberPipelineCount = 6;
+inline constexpr std::size_t uberPipelineCount = 8;
 inline constexpr std::size_t textureSlots = 16;
 inline constexpr std::size_t formantSlots = 8;
 

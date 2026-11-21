@@ -4,6 +4,16 @@ float sdRoundedRect(float2 p, float2 half_, float4 radii) {
     return min(max(q.x, q.y), 0.0f) + length(max(q, float2(0.0f))) - radius;
 }
 
+float2 sdRoundedRectGradient(float2 p, float2 half_, float4 radii) {
+    float radius = p.x > 0.0f ? (p.y > 0.0f ? radii.y : radii.x) : (p.y > 0.0f ? radii.w : radii.z);
+    float2 side = float2(p.x > 0.0f ? 1.0f : -1.0f, p.y > 0.0f ? 1.0f : -1.0f);
+    float2 q = abs(p) - half_ + float2(radius);
+    if (q.x > 0.0f && q.y > 0.0f) {
+        return side * normalize(q);
+    }
+    return q.x > q.y ? float2(side.x, 0.0f) : float2(0.0f, side.y);
+}
+
 float sdSegment(float2 p, float2 a, float2 b) {
     float2 edge = b - a;
     float lengthSquared = dot(edge, edge);

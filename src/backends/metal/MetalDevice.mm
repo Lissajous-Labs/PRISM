@@ -23,6 +23,8 @@ void configureBlend(MTLRenderPipelineColorAttachmentDescriptor *attachment,
     attachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
     switch (pipeline) {
     case render::UberPipeline::sourceOver:
+    case render::UberPipeline::analytic:
+    case render::UberPipeline::textured:
         attachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
         break;
     case render::UberPipeline::screen:
@@ -47,7 +49,15 @@ id<MTLRenderPipelineState> buildPipeline(id<MTLDevice> device, id<MTLLibrary> li
                                          render::UberPipeline blend) {
     MTLRenderPipelineDescriptor *descriptor = [MTLRenderPipelineDescriptor new];
     descriptor.vertexFunction = function(library, vertexName);
-    descriptor.fragmentFunction = function(library, fragmentName);
+    MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+    const std::uint32_t shadingClass = blend == render::UberPipeline::analytic   ? 1
+                                       : blend == render::UberPipeline::textured ? 2
+                                                                                 : 0;
+    [constants setConstantValue:&shadingClass type:MTLDataTypeUInt atIndex:0];
+    descriptor.fragmentFunction =
+        [library newFunctionWithName:[NSString stringWithUTF8String:fragmentName]
+                      constantValues:constants
+                               error:nil];
     descriptor.depthAttachmentPixelFormat = depthFormat;
     configureBlend(descriptor.colorAttachments[0], blend);
     NSError *error = nil;

@@ -32,6 +32,13 @@ LocalBox box(const FrameView &frame, std::uint32_t offset) noexcept {
     return {(low + high) * 0.5, (high - low) * 0.5};
 }
 
+LocalBox rectBox(const PrimitiveDesc &desc) noexcept {
+    const auto rect = desc.shapeRect();
+    const Vector2 low{rect[0], rect[1]};
+    const Vector2 high{rect[2], rect[3]};
+    return {(low + high) * 0.5, (high - low) * 0.5};
+}
+
 math::CornerRadii radii(const PrimitiveDesc &desc) noexcept {
     return {desc.params[0], desc.params[1], desc.params[2], desc.params[3]};
 }
@@ -61,23 +68,22 @@ ShadeResult solid(math::PremultipliedColor color) noexcept { return {color, {0, 
 
 ShadeResult shadeRoundedRect(const FrameView &frame, const PrimitiveDesc &desc,
                              const TransformRecord &transform, Vector2 local) noexcept {
-    const LocalBox shape = box(frame, desc.payloadOffset);
-    const auto outer = [&](Vector2 p) {
-        return math::roundedRect(p - shape.center, shape.half, radii(desc));
+    const LocalBox shape = rectBox(desc);
+    const auto coverage = [&](Vector2 center, Vector2 half, math::CornerRadii corners) {
+        const Vector2 p = local - center;
+        return detail::gradientCoverage(transform, math::roundedRect(p, half, corners),
+                                        math::roundedRectGradient(p, half, corners));
     };
-    const double outerCoverage = detail::fieldCoverage(transform, local, outer);
+    const double outerCoverage = coverage(shape.center, shape.half, radii(desc));
     const auto fill = fillColor(frame, desc, local);
     if (!desc.has(flags::border)) {
         return solid(detail::scale(fill, outerCoverage));
     }
-    const std::uint32_t widths = desc.payloadOffset + 4;
+    const std::uint32_t widths = desc.payloadOffset;
     const auto inner = math::innerBorder(shape.half, radii(desc),
                                          {frame.payload[widths], frame.payload[widths + 1],
                                           frame.payload[widths + 2], frame.payload[widths + 3]});
-    const auto innerField = [&](Vector2 p) {
-        return math::roundedRect(p - shape.center - inner.center, inner.half, inner.radii);
-    };
-    const double innerCoverage = detail::fieldCoverage(transform, local, innerField);
+    const double innerCoverage = coverage(shape.center + inner.center, inner.half, inner.radii);
     const auto weights = math::borderWeights(outerCoverage, innerCoverage);
     const auto border = detail::decodeColor(desc.borderColor);
     const auto f = detail::scale(fill, weights.fill);
@@ -92,19 +98,19 @@ ShadeResult shadeField(const FrameView &frame, const PrimitiveDesc &desc,
                                detail::fieldCoverage(transform, local, field)));
 }
 
-ShadeResult shadeShadow(const FrameView &frame, const PrimitiveDesc &desc,
-                        const TransformRecord &transform, Vector2 local) noexcept {
-    const LocalBox shape = box(frame, desc.payloadOffset);
+ShadeResult shadeShadow(const PrimitiveDesc &desc, const TransformRecord &transform,
+                        Vector2 local) noexcept {
+    const LocalBox shape = rectBox(desc);
     const double sigma = desc.params[0];
     const double radius = desc.params[1];
     const double blurred = math::roundedBoxShadow(local - shape.center, shape.half, radius, sigma);
     double alpha = blurred;
     if (desc.has(flags::inset)) {
         const math::CornerRadii corners{radius, radius, radius, radius};
-        const auto inside = [&](Vector2 p) {
-            return math::roundedRect(p - shape.center, shape.half, corners);
-        };
-        alpha = detail::fieldCoverage(transform, local, inside) * (1 - blurred);
+        const Vector2 p = local - shape.center;
+        alpha = detail::gradientCoverage(transform, math::roundedRect(p, shape.half, corners),
+                                         math::roundedRectGradient(p, shape.half, corners)) *
+                (1 - blurred);
     }
     return solid(detail::scale(detail::decodeColor(desc.color), alpha));
 }
@@ -248,7 +254,7 @@ ShadeResult shadePrimitive(const FrameView &frame, const PrimitiveDesc &desc, do
         result = shadeRoundedRect(frame, desc, transform, local);
         break;
     case PrimitiveKind::squircle: {
-        const LocalBox shape = box(frame, desc.payloadOffset);
+        const LocalBox shape = rectBox(desc);
         result = shadeField(frame, desc, transform, local, [&](Vector2 p) {
             return math::superellipse(p - shape.center, shape.half, desc.params[0]);
         });
@@ -288,7 +294,7 @@ ShadeResult shadePrimitive(const FrameView &frame, const PrimitiveDesc &desc, do
         });
         break;
     case PrimitiveKind::boxShadow:
-        result = shadeShadow(frame, desc, transform, local);
+        result = shadeShadow(desc, transform, local);
         break;
     case PrimitiveKind::glyphAlpha:
     case PrimitiveKind::glyphLcd:

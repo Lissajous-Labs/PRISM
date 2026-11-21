@@ -28,7 +28,7 @@ void MetalShadowCache::prepare(MetalDeviceState &device, const render::FrameView
         if (d.kind() != render::PrimitiveKind::boxShadow || d.has(render::flags::inset)) {
             continue;
         }
-        const float *box = frame.payload.data() + d.payloadOffset;
+        const auto box = d.shapeRect();
         const float half[2] = {(box[2] - box[0]) / 2, (box[3] - box[1]) / 2};
         const float radius = std::clamp(d.params[1], 0.0f, std::min(half[0], half[1]));
         const float sigma = d.params[0];

@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace prism::render {
 namespace {
@@ -39,8 +40,7 @@ Vector2 physical(const TransformRecord &t, Vector2 p) noexcept {
 }
 Vector2 rasterProject(const Wavetable3dUniforms &u, double x, double y, double z,
                       double &depth) noexcept {
-    const float dzScale =
-        (u.flags >> 16) != 0 ? static_cast<float>(u.flags >> 16) / 1024.0f : 1.0f;
+    const float dzScale = (u.flags >> 16) != 0 ? static_cast<float>(u.flags >> 16) / 1024.0f : 1.0f;
     const float fx = static_cast<float>(x), fy = static_cast<float>(y),
                 fz = static_cast<float>(z) * dzScale;
     const float xr = u.camera[0] * fx + u.camera[1] * fz;
@@ -178,10 +178,9 @@ Rgba fragment(const FrameView &frame, const PrimitiveDesc &desc, const Wavetable
             }
             result[3] = static_cast<float>(core * atten);
         } else {
-            const double alpha =
-                studio ? 0.90 * (0.70 + 0.30 * v.focus) * (0.78 + 0.22 * depth) * core *
-                             (v.ghost ? 0.35 : 1)
-                       : 0.75 * v.focus * depth * core * (v.ghost ? 0.35 : 1);
+            const double alpha = studio ? 0.90 * (0.70 + 0.30 * v.focus) * (0.78 + 0.22 * depth) *
+                                              core * (v.ghost ? 0.35 : 1)
+                                        : 0.75 * v.focus * depth * core * (v.ghost ? 0.35 : 1);
             result = palette(frame, desc.gradientOffset,
                              studio ? (0.52 + 0.22 * v.focus) : (0.30 + 0.40 * v.focus));
             for (std::size_t c = 0; c < 3; ++c) {
@@ -257,9 +256,39 @@ struct RasterTriangle {
         return true;
     }
 };
-template <class Emit>
+bool lineVertex(const WavetableLine &line, Vector2 pixel, Vertex &v) noexcept {
+    double best = std::numeric_limits<double>::infinity();
+    Vector2 closest{}, tangent{1, 0};
+    double depth = 0;
+    for (std::uint32_t i = 0; i + 1 < line.count; ++i) {
+        const Vector2 a = line.points[i], ab = line.points[i + 1] - a;
+        const double length = math::dot(ab, ab);
+        const double t = length > 0 ? std::clamp(math::dot(pixel - a, ab) / length, 0.0, 1.0) : 0.0;
+        const Vector2 q = a + ab * t, d = pixel - q;
+        const double distance = math::dot(d, d);
+        if (distance < best) {
+            best = distance;
+            closest = q;
+            tangent = ab;
+            depth = line.depth[i] + (line.depth[i + 1] - line.depth[i]) * t;
+        }
+    }
+    const double distance = std::sqrt(best);
+    if (!(distance <= line.radius)) {
+        return false;
+    }
+    const Vector2 direction = unit(tangent);
+    v.mode = 1;
+    v.active = true;
+    v.distance = distance;
+    v.depth = depth;
+    v.normal =
+        distance > 1e-9 ? (pixel - closest) * (1 / distance) : Vector2{-direction.y, direction.x};
+    return true;
+}
+template <class Emit, class Line>
 void triangles(const FrameView &frame, const PrimitiveDesc &desc, const Wavetable3dUniforms &u,
-               Emit &&emit) noexcept {
+               Emit &&emit, Line &&line) noexcept {
     if (desc.auxHandle >= frame.textures.size()) {
         return;
     }
@@ -342,8 +371,20 @@ void triangles(const FrameView &frame, const PrimitiveDesc &desc, const Wavetabl
             quad(crest[i], base[i], crest[i + 1], base[i + 1]);
         }
         const bool studio = (u.flags & 4u) != 0;
-        const double radius = active ? (studio ? 0.95 + 2.5 * 1.3 : 0.95 + 3 * 2.6)
-                                     : (studio ? 0.6 + 1 : 0.55 + 1);
+        const double radius =
+            active ? (studio ? 0.95 + 2.5 * 1.3 : 0.95 + 3 * 2.6) : (studio ? 0.6 + 1 : 0.55 + 1);
+        if (active) {
+            WavetableLine exact;
+            exact.count = phases;
+            exact.slice = slice;
+            exact.radius = static_cast<float>(radius);
+            for (std::uint32_t i = 0; i < phases; ++i) {
+                exact.points[i] = crest[i].p;
+                exact.depth[i] = static_cast<float>(crest[i].depth);
+            }
+            line(exact);
+            continue;
+        }
         for (std::uint32_t i = 0; i < phases; ++i) {
             const auto before = unit(crest[i].p - crest[i == 0 ? 0 : i - 1].p);
             const auto after = unit(crest[i + 1 < phases ? i + 1 : i].p - crest[i].p);
@@ -402,37 +443,74 @@ void rasterWavetable3d(const FrameView &frame, const PrimitiveDesc &desc, FloatI
     image.resize(width, height);
     Wavetable3dUniforms u;
     std::memcpy(&u, frame.payload.data() + desc.payloadOffset, sizeof(u));
-    triangles(frame, desc, u, [&](const Vertex &a, const Vertex &b, const Vertex &c) {
-        const RasterTriangle triangle(a, b, c);
-        const int x0 = std::max(0, static_cast<int>(std::floor(std::min({a.p.x, b.p.x, c.p.x}))));
-        const int y0 = std::max(0, static_cast<int>(std::floor(std::min({a.p.y, b.p.y, c.p.y}))));
-        const int x1 = std::min(static_cast<int>(width),
-                                static_cast<int>(std::ceil(std::max({a.p.x, b.p.x, c.p.x}))));
-        const int y1 = std::min(static_cast<int>(height),
-                                static_cast<int>(std::ceil(std::max({a.p.y, b.p.y, c.p.y}))));
+    const auto shadeBox = [&](double minX, double minY, double maxX, double maxY, auto &&sample) {
+        const int x0 = std::max(0, static_cast<int>(std::floor(minX)));
+        const int y0 = std::max(0, static_cast<int>(std::floor(minY)));
+        const int x1 = std::min(static_cast<int>(width), static_cast<int>(std::ceil(maxX)));
+        const int y1 = std::min(static_cast<int>(height), static_cast<int>(std::ceil(maxY)));
         for (int y = y0; y < y1; ++y) {
             for (int x = x0; x < x1; ++x) {
                 const Vector2 pixel{x + 0.5, y + 0.5};
                 Vertex v;
-                if (triangle.interpolate(pixel, v)) {
+                if (sample(pixel, v)) {
                     over(image.at(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)),
                          fragment(frame, desc, u, v, pixel));
                 }
             }
         }
-    });
+    };
+    triangles(
+        frame, desc, u,
+        [&](const Vertex &a, const Vertex &b, const Vertex &c) {
+            const RasterTriangle triangle(a, b, c);
+            shadeBox(std::min({a.p.x, b.p.x, c.p.x}), std::min({a.p.y, b.p.y, c.p.y}),
+                     std::max({a.p.x, b.p.x, c.p.x}), std::max({a.p.y, b.p.y, c.p.y}),
+                     [&](Vector2 pixel, Vertex &v) { return triangle.interpolate(pixel, v); });
+        },
+        [&](const WavetableLine &line) {
+            double minX = line.points[0].x, minY = line.points[0].y, maxX = minX, maxY = minY;
+            for (std::uint32_t i = 1; i < line.count; ++i) {
+                minX = std::min(minX, line.points[i].x);
+                minY = std::min(minY, line.points[i].y);
+                maxX = std::max(maxX, line.points[i].x);
+                maxY = std::max(maxY, line.points[i].y);
+            }
+            shadeBox(minX - line.radius, minY - line.radius, maxX + line.radius, maxY + line.radius,
+                     [&](Vector2 pixel, Vertex &v) { return lineVertex(line, pixel, v); });
+        });
+}
+bool wavetableActiveLine(const FrameView &frame, const PrimitiveDesc &desc,
+                         WavetableLine &line) noexcept {
+    Wavetable3dUniforms u;
+    std::memcpy(&u, frame.payload.data() + desc.payloadOffset, sizeof(u));
+    bool found = false;
+    triangles(
+        frame, desc, u, [](const Vertex &, const Vertex &, const Vertex &) {},
+        [&](const WavetableLine &exact) {
+            line = exact;
+            found = true;
+        });
+    return found;
 }
 math::PremultipliedColor shadeWavetable3d(const FrameView &frame, const PrimitiveDesc &desc,
                                           double x, double y) noexcept {
     Wavetable3dUniforms u;
     std::memcpy(&u, frame.payload.data() + desc.payloadOffset, sizeof(u));
     Rgba color{};
-    triangles(frame, desc, u, [&](const Vertex &a, const Vertex &b, const Vertex &c) {
-        Vertex v;
-        if (RasterTriangle(a, b, c).interpolate({x, y}, v)) {
-            over(color, fragment(frame, desc, u, v, {x, y}));
-        }
-    });
+    triangles(
+        frame, desc, u,
+        [&](const Vertex &a, const Vertex &b, const Vertex &c) {
+            Vertex v;
+            if (RasterTriangle(a, b, c).interpolate({x, y}, v)) {
+                over(color, fragment(frame, desc, u, v, {x, y}));
+            }
+        },
+        [&](const WavetableLine &line) {
+            Vertex v;
+            if (lineVertex(line, {x, y}, v)) {
+                over(color, fragment(frame, desc, u, v, {x, y}));
+            }
+        });
     return {color[0], color[1], color[2], color[3]};
 }
 }

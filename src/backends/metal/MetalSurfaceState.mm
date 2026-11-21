@@ -75,6 +75,15 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
     }
     formants.prepare(*device, view, primitives, extent);
     halftones.prepare(*device, view, primitives, payload);
+    wavetableLines.clear();
+    for (std::size_t i = 0; i < view.primitives.size(); ++i) {
+        if (view.primitives[i].kind() == render::PrimitiveKind::wavetable3d) {
+            render::WavetableLine line;
+            if (render::wavetableActiveLine(view, view.primitives[i], line)) {
+                wavetableLines.emplace_back(static_cast<std::uint32_t>(i), line);
+            }
+        }
+    }
 }
 
 void MetalSurfaceState::bindUber(id<MTLRenderCommandEncoder> encoder,
@@ -142,7 +151,7 @@ void MetalSurfaceState::drawOrdered(id<MTLRenderCommandEncoder> encoder, std::ui
         while (cursor < end) {
             const auto index = indexScratch[opaqueCount + cursor];
             if (descriptors[index].kind() == render::PrimitiveKind::wavetable3d) {
-                drawWavetable3d(encoder, *device, descriptors[index], index);
+                drawWavetable3d(encoder, *device, descriptors[index], index, wavetableLine(index));
                 ++cursor;
                 continue;
             }

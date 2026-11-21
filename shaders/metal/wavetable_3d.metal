@@ -88,6 +88,14 @@ float2 waveCrest(device const float *h, texture2d<float> source, TransformRecord
     return wavePhysical(t, waveProject(h, float3(x, amplitude, 2.0f * morph - 1.0f), depth));
 }
 constant uint waveQuad[6] = {0u, 1u, 2u, 1u, 3u, 2u};
+struct WavetableLineData {
+    uint count;
+    float radius;
+    float bounds[4];
+    float2 points[256];
+    float depth[256];
+    float4 chunks[16];
+};
 vertex WavetableVertex wavetable3dVertex(uint vertexId [[vertex_id]], uint instanceId [[instance_id]],
                                          device const PrimitiveDesc *primitives [[buffer(0)]],
                                          device const float *payload [[buffer(1)]],
@@ -95,6 +103,7 @@ vertex WavetableVertex wavetable3dVertex(uint vertexId [[vertex_id]], uint insta
                                          constant FrameUniforms &uniforms [[buffer(4)]],
                                          constant uint &primitiveIndex [[buffer(8)]],
                                          constant uint &drawMode [[buffer(9)]],
+                                         constant WavetableLineData &line [[buffer(10)]],
                                          array<texture2d<float>, 16> textures [[texture(1)]]) {
     PrimitiveDesc d = primitives[primitiveIndex];
     device const float *h = payload + d.payloadOffset;
@@ -103,7 +112,12 @@ vertex WavetableVertex wavetable3dVertex(uint vertexId [[vertex_id]], uint insta
     out.primitive = primitiveIndex; out.mode = 0u; out.flags = 0u;
     out.data = float4(0.0f); out.normal = float2(0.0f);
     float2 p = float2(0.0f);
-    if (drawMode != 1u) {
+    if (drawMode == 3u) {
+        uint corner = waveQuad[vertexId % 6u];
+        p = float2((corner & 1u) != 0u ? line.bounds[2] : line.bounds[0],
+                   corner >= 2u ? line.bounds[3] : line.bounds[1]);
+        out.mode = 3u; out.flags = 1u;
+    } else if (drawMode != 1u) {
         uint edge = vertexId / 6u, corner = waveQuad[vertexId % 6u];
         uint axis = edge / 4u, other = edge % 4u, bit = 0u;
         float3 a, b;
@@ -124,6 +138,7 @@ vertex WavetableVertex wavetable3dVertex(uint vertexId [[vertex_id]], uint insta
         bool active; int voice;
         float morph = waveSlice(h, instanceId, active, voice);
         out.flags = (active ? 1u : 0u) | (voice >= 0 ? 2u : 0u);
+        if (active && vertexId >= 2u * phases) { out.position = float4(0.0f, 0.0f, 0.0f, 1.0f); return out; }
         float focus = h[15] + (1.0f - h[15]) * exp(-pow(morph - h[12], 2.0f) / (2.0f * 0.14f * 0.14f));
         uint phase = (vertexId % (2u * phases)) / 2u;
         float depth;
@@ -173,7 +188,8 @@ fragment float4 wavetable3dFragment(WavetableVertex in [[stage_in]],
                                      device const float *payload [[buffer(1)]],
                                      device const TransformRecord *transforms [[buffer(2)]],
                                      device const ClipRecord *clips [[buffer(3)]],
-                                     texture2d<float> gradients [[texture(0)]]) {
+                                     texture2d<float> gradients [[texture(0)]],
+                                     constant WavetableLineData &line [[buffer(10)]]) {
     PrimitiveDesc d = primitives[in.primitive];
     device const float *h = payload + d.payloadOffset;
     float2 local = applyInverse(transforms[d.transformId], in.position.xy);
@@ -181,6 +197,34 @@ fragment float4 wavetable3dFragment(WavetableVertex in [[stage_in]],
     bool active = (in.flags & 1u) != 0u, ghost = (in.flags & 2u) != 0u;
     bool studio = (as_type<uint>(h[19]) & 4u) != 0u;
     float depth = exp(-0.45f * clamp(0.5f * (h[11] - in.data.w), 0.0f, 1.0f));
+    if (in.mode == 3u) {
+        float best = INFINITY, lineDepth = 0.0f;
+        float2 closest = float2(0.0f), tangent = float2(1.0f, 0.0f);
+        float2 pixel = in.position.xy;
+        for (uint c = 0; c < 16u; ++c) {
+            float4 box = line.chunks[c];
+            if (pixel.x < box.x || pixel.y < box.y || pixel.x > box.z || pixel.y > box.w) { continue; }
+            uint last = min(c * 16u + 16u, line.count - 1u);
+            for (uint i = c * 16u; i < last; ++i) {
+                float2 a = line.points[i], ab = line.points[i + 1u] - a;
+                float length2 = dot(ab, ab);
+                float t = length2 > 0.0f ? clamp(dot(pixel - a, ab) / length2, 0.0f, 1.0f) : 0.0f;
+                float2 q = a + ab * t, delta = pixel - q;
+                float distance2 = dot(delta, delta);
+                if (distance2 < best) {
+                    best = distance2; closest = q; tangent = ab;
+                    lineDepth = line.depth[i] + (line.depth[i + 1u] - line.depth[i]) * t;
+                }
+            }
+        }
+        float distance = sqrt(best);
+        if (!(distance <= line.radius)) { return float4(0.0f); }
+        float2 direction = waveUnit(tangent);
+        in.data.y = distance;
+        in.normal = distance > 1e-9f ? (pixel - closest) / distance : float2(-direction.y, direction.x);
+        in.mode = 1u;
+        depth = exp(-0.45f * clamp(0.5f * (h[11] - lineDepth), 0.0f, 1.0f));
+    }
     float4 result;
     if (in.mode == 0u) {
         float v = clamp(in.data.x, 0.0f, 1.0f);

@@ -9,6 +9,7 @@
 #include "backends/metal/MetalState.h"
 #include "render/RenderSurface.h"
 #include "render/UberBatches.h"
+#include "render/Wavetable3d.h"
 
 #include <array>
 #include <memory>
@@ -45,6 +46,15 @@ struct MetalSurfaceState {
     MetalEffects effects;
     MetalFormantCache formants;
     MetalHalftoneCache halftones;
+    std::vector<std::pair<std::uint32_t, render::WavetableLine>> wavetableLines;
+    [[nodiscard]] const render::WavetableLine *wavetableLine(std::uint32_t index) const noexcept {
+        for (const auto &entry : wavetableLines) {
+            if (entry.first == index) {
+                return &entry.second;
+            }
+        }
+        return nullptr;
+    }
     id<MTLTexture> output = nil;
     bool bloomActive = false;
     std::vector<std::uint32_t> indexScratch;

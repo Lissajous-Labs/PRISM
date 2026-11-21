@@ -89,3 +89,12 @@ add_library(prism_scene STATIC
     scene/SceneGraph.cpp
 )
 target_link_libraries(prism_scene PUBLIC prism_render)
+
+add_library(prism_dom STATIC
+    dom/DomBinary.cpp
+    dom/DomDocument.cpp
+    dom/DomJson.cpp
+    dom/DomReconcile.cpp
+    dom/DomXml.cpp
+)
+target_link_libraries(prism_dom PUBLIC prism_math)

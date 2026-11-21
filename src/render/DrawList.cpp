@@ -110,7 +110,8 @@ void DrawList::roundedRect(RectF rect, math::CornerRadii radii, std::uint32_t co
              static_cast<float>(border->widths.right), static_cast<float>(border->widths.bottom)}));
     }
     const bool solid = (color >> 24) == 255 && (!border || (border->color >> 24) == 255);
-    if (solid && blend_ == hal::BlendMode::sourceOver && gradientRow_ == noTexture) {
+    if (solid && blend_ == hal::BlendMode::sourceOver && gradientRow_ == noTexture &&
+        clip_ == noClip) {
         desc.kindFlags |= flags::opaque;
     }
 }

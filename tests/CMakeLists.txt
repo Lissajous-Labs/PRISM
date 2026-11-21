@@ -42,6 +42,7 @@ if(APPLE)
     prism_test(gradient_dither gpu/GradientDitherTests.cpp prism_backend_metal prism_backend_cpu prism_pixel_oracle)
     set_tests_properties(gradient_dither PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+prism_test(vector_oracle unit/VectorOracleTests.cpp prism_render prism_coverage_oracle)
 
 add_test(NAME no_comments COMMAND prism_check_comments "${PROJECT_SOURCE_DIR}")
 add_test(NAME comment_scanner COMMAND prism_check_comments --self-test)

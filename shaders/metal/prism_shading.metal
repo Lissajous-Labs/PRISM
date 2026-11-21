@@ -31,7 +31,7 @@ float4 innerRadii(float4 radii, float4 widths) {
                   max(0.0f, radii.z - max(widths.y, widths.x)), max(0.0f, radii.w - max(widths.w, widths.x)));
 }
 
-float plotField(PrimitiveDesc d, device const float *payload, texture2d<float> strip, float2 p) {
+float2 plotBand(PrimitiveDesc d, device const float *payload, texture2d<float> strip, float2 p) {
     LocalBox box = payloadBox(payload, d.payloadOffset);
     float columns = d.params[1];
     float u = clamp((p.x - (box.center.x - box.half_.x)) / (2.0f * box.half_.x), 0.0f, 1.0f);
@@ -41,9 +41,13 @@ float plotField(PrimitiveDesc d, device const float *payload, texture2d<float> s
     float4 band = strip.read(uint2(min(column, strip.get_width() - 1), 0));
     float base = box.center.y + box.half_.y;
     bool fill = payload[d.payloadOffset + 4] > 0.0f;
-    float top = base - (fill ? band.x : band.y) * 2.0f * box.half_.y;
-    float bottom = fill ? base : base - band.x * 2.0f * box.half_.y;
-    return max(top - p.y, p.y - bottom) - d.params[0] * 0.5f;
+    return float2(base - (fill ? band.x : band.y) * 2.0f * box.half_.y,
+                  fill ? base : base - band.x * 2.0f * box.half_.y);
+}
+
+float plotField(PrimitiveDesc d, device const float *payload, texture2d<float> strip, float2 p) {
+    float2 band = plotBand(d, payload, strip, p);
+    return max(band.x - p.y, p.y - band.y) - d.params[0] * 0.5f;
 }
 
 float evaluateField(int mode, PrimitiveDesc d, device const float *payload, texture2d<float> strip, float2 p) {
@@ -94,6 +98,12 @@ float fieldCoverage(int mode, TransformRecord t, PrimitiveDesc d, device const f
                                t.inverse[2] * t.inverse[2] + t.inverse[3] * t.inverse[3]);
     if (abs(distance) >= reach) {
         return distance < 0.0f ? 1.0f : 0.0f;
+    }
+    if (mode == fieldPrimitive && (d.kindFlags & kindMask) == kindPlot) {
+        float2 band = plotBand(d, payload, strip, local);
+        float2 axis = float2(t.inverse[1], t.inverse[3]) * (band.x - local.y > local.y - band.y ? -1.0f : 1.0f);
+        float axisNorm = length(axis);
+        return axisNorm > 1e-12f ? boxCoverage(distance / axisNorm, axis) : (distance <= 0.0f ? 1.0f : 0.0f);
     }
     float2 gradient = float2(
         evaluateField(mode, d, payload, strip, local + float2(gradientStep, 0.0f)) -

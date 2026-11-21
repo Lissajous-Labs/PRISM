@@ -173,22 +173,22 @@ ShadeResult shadePlot(const FrameView &frame, const PrimitiveDesc &desc,
     const LocalBox shape = box(frame, desc.payloadOffset);
     const double columns = desc.params[1];
     const double halfThickness = desc.params[0] / 2;
-    const auto field = [&](Vector2 p) {
-        const double u =
-            std::clamp((p.x - (shape.center.x - shape.half.x)) / (2 * shape.half.x), 0.0, 1.0);
-        const auto count = static_cast<std::int64_t>(columns);
-        const auto raw = static_cast<std::int64_t>(
-            std::floor(std::min(u * columns, columns - 1) + desc.params[2]));
-        const auto column = (raw % count + count) % count;
-        const Texel band = fetchTexel(strip, column, 0);
-        const double base = shape.center.y + shape.half.y;
-        const bool fill = frame.payload[desc.payloadOffset + 4] > 0;
-        const double top = base - (fill ? band[0] : band[1]) * 2 * shape.half.y;
-        const double bottom = fill ? base : base - band[0] * 2 * shape.half.y;
-        const double outside = std::max(top - p.y, p.y - bottom);
-        return outside - halfThickness;
-    };
-    auto result = shadeField(frame, desc, transform, local, field);
+    const double position =
+        std::clamp((local.x - (shape.center.x - shape.half.x)) / (2 * shape.half.x), 0.0, 1.0);
+    const auto count = static_cast<std::int64_t>(columns);
+    const auto raw = static_cast<std::int64_t>(
+        std::floor(std::min(position * columns, columns - 1) + desc.params[2]));
+    const auto column = (raw % count + count) % count;
+    const Texel band = fetchTexel(strip, column, 0);
+    const double base = shape.center.y + shape.half.y;
+    const bool fill = frame.payload[desc.payloadOffset + 4] > 0;
+    const double top = base - (fill ? band[0] : band[1]) * 2 * shape.half.y;
+    const double bottom = fill ? base : base - band[0] * 2 * shape.half.y;
+    const bool above = top - local.y > local.y - bottom;
+    const double distance = (above ? top - local.y : local.y - bottom) - halfThickness;
+    auto result = solid(
+        detail::scale(fillColor(frame, desc, local),
+                      detail::gradientCoverage(transform, distance, {0, above ? -1.0 : 1.0})));
     if (desc.params[3] > 0) {
         const double u = (local.x - shape.center.x + shape.half.x) / (2 * shape.half.x);
         const auto smooth = [&](double value) {

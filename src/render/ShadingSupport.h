@@ -50,6 +50,24 @@ template <class Field>
     return math::boxCoverage(distance / norm, physicalGradient);
 }
 
+[[nodiscard]] inline double gradientCoverage(const TransformRecord &transform, double distance,
+                                             math::Vector2 localGradient) noexcept {
+    const double reach = 0.71 * std::sqrt(transform.inverse[0] * transform.inverse[0] +
+                                          transform.inverse[1] * transform.inverse[1] +
+                                          transform.inverse[2] * transform.inverse[2] +
+                                          transform.inverse[3] * transform.inverse[3]);
+    if (std::abs(distance) >= reach) {
+        return distance < 0 ? 1 : 0;
+    }
+    const math::Vector2 physicalGradient{
+        transform.inverse[0] * localGradient.x + transform.inverse[1] * localGradient.y,
+        transform.inverse[2] * localGradient.x + transform.inverse[3] * localGradient.y};
+    const double norm = math::length(physicalGradient);
+    if (!(norm > 1e-12)) {
+        return distance <= 0 ? 1 : 0;
+    }
+    return math::boxCoverage(distance / norm, physicalGradient);
+}
 [[nodiscard]] inline math::Vector2 toLocal(const TransformRecord &transform, double x,
                                            double y) noexcept {
     return {transform.inverse[0] * x + transform.inverse[2] * y + transform.inverse[4],

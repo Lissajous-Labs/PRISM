@@ -9,6 +9,7 @@ endif()
 
 include(CTest)
 option(PRISM_SANITIZE "Enable memory and undefined-behavior checks" OFF)
+option(PRISM_BUILD_TESTS "Build the framework test suite" ${PROJECT_IS_TOP_LEVEL})
 
 add_library(prism_options INTERFACE)
 target_compile_features(prism_options INTERFACE cxx_std_23)
@@ -28,13 +29,15 @@ endif()
 
 add_subdirectory(src)
 
-add_executable(prism_check_comments tools/lint/CheckNoComments.cpp)
-target_link_libraries(prism_check_comments PRIVATE prism_options)
-add_custom_target(lint
-    COMMAND prism_check_comments "${CMAKE_CURRENT_SOURCE_DIR}"
-    DEPENDS prism_check_comments
-)
+if(PRISM_BUILD_TESTS)
+    add_executable(prism_check_comments tools/lint/CheckNoComments.cpp)
+    target_link_libraries(prism_check_comments PRIVATE prism_options)
+    add_custom_target(lint
+        COMMAND prism_check_comments "${CMAKE_CURRENT_SOURCE_DIR}"
+        DEPENDS prism_check_comments
+    )
+endif()
 
-if(BUILD_TESTING)
+if(BUILD_TESTING AND PRISM_BUILD_TESTS)
     add_subdirectory(tests)
 endif()

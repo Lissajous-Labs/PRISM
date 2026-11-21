@@ -28,6 +28,7 @@ void DrawList::clear() {
     transforms_.clear();
     clips_.clear();
     paths_.clear();
+    effects_.clear();
     pathSegments_.clear();
     transforms_.push_back(*TransformRecord::from(math::Affine2D{}));
     clips_.push_back({noClip, identityTransform, ClipKind::none, {}, {}});
@@ -241,8 +242,8 @@ void DrawList::emitPath(std::uint32_t firstSegment, std::uint32_t color, FillRul
 void DrawList::fillPath(const VectorPath &path, std::uint32_t color, FillRule rule) {
     const auto first = static_cast<std::uint32_t>(pathSegments_.size());
     polylineScratch_.clear();
-    flattenPolylines(path, transforms_[transform_].forwardTransform(), math::defaultFlattenTolerance,
-                     polylineScratch_);
+    flattenPolylines(path, transforms_[transform_].forwardTransform(),
+                     math::defaultFlattenTolerance, polylineScratch_);
     appendFill(polylineScratch_, pathSegments_);
     emitPath(first, color, rule);
 }
@@ -265,5 +266,16 @@ void DrawList::strokePath(const VectorPath &path, const StrokeStyle &style, std:
     }
     appendFill(outlineScratch_, pathSegments_);
     emitPath(first, color, FillRule::nonZero);
+}
+
+void DrawList::backdropBlur(RectF rect, math::CornerRadii radii, float sigma) {
+    const auto clamped =
+        math::clampRadii(radii, {(rect.x1 - rect.x0) / 2.0, (rect.y1 - rect.y0) / 2.0});
+    effects_.push_back(
+        {{rect.x0, rect.y0, rect.x1, rect.y1},
+         {static_cast<float>(clamped.topRight), static_cast<float>(clamped.bottomRight),
+          static_cast<float>(clamped.topLeft), static_cast<float>(clamped.bottomLeft)},
+         sigma,
+         static_cast<std::uint32_t>(primitives_.size())});
 }
 }

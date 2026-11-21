@@ -6,6 +6,7 @@
 #include "math/SdfShapes.h"
 #include "render/FrameRecords.h"
 #include "render/PrimitiveDesc.h"
+#include "render/effects/EffectDraw.h"
 #include "render/vector/PathDraw.h"
 #include "render/vector/StrokeExpander.h"
 #include "render/vector/VectorPath.h"
@@ -59,6 +60,7 @@ class DrawList {
                       std::uint32_t color, float pixelRange = 0);
     void fillPath(const VectorPath &path, std::uint32_t color, FillRule rule = FillRule::nonZero);
     void strokePath(const VectorPath &path, const StrokeStyle &style, std::uint32_t color);
+    void backdropBlur(RectF rect, math::CornerRadii radii, float sigma);
     void plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
                    std::uint32_t color);
 
@@ -69,6 +71,7 @@ class DrawList {
     }
     [[nodiscard]] std::span<const ClipRecord> clips() const noexcept { return clips_; }
     [[nodiscard]] std::span<const PathDraw> paths() const noexcept { return paths_; }
+    [[nodiscard]] std::span<const EffectDraw> effects() const noexcept { return effects_; }
     [[nodiscard]] std::span<const LineSegment> pathSegments() const noexcept {
         return pathSegments_;
     }
@@ -79,6 +82,7 @@ class DrawList {
     std::vector<TransformRecord> transforms_;
     std::vector<ClipRecord> clips_;
     std::vector<PathDraw> paths_;
+    std::vector<EffectDraw> effects_;
     std::vector<LineSegment> pathSegments_;
     std::vector<Polyline> polylineScratch_;
     std::vector<Polyline> outlineScratch_;

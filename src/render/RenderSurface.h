@@ -5,6 +5,7 @@
 #include "hal/SurfaceBackend.h"
 #include "math/Color.h"
 #include "render/FrameView.h"
+#include "render/effects/Bloom.h"
 
 #include <memory>
 #include <span>
@@ -14,6 +15,7 @@ struct FrameRequest {
     FrameView view;
     const hal::DamageRegion *damage;
     math::PremultipliedColor clear;
+    const BloomSettings *bloom = nullptr;
 };
 
 class RenderSurface : public hal::SurfaceBackend {

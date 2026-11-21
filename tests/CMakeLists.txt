@@ -25,6 +25,7 @@ prism_test(hashing unit/Hash64Tests.cpp prism_math)
 prism_test(bitset unit/Bitset64Tests.cpp prism_math)
 prism_test(color unit/ColorMathTests.cpp prism_math)
 prism_test(geometry unit/GeometrySnapTests.cpp prism_math)
+prism_test(sdf_shapes unit/SdfShapeTests.cpp prism_math)
 
 add_test(NAME no_comments COMMAND prism_check_comments "${PROJECT_SOURCE_DIR}")
 add_test(NAME comment_scanner COMMAND prism_check_comments --self-test)

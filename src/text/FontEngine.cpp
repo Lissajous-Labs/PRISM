@@ -71,6 +71,7 @@ void FontEngine::refreshViews() {
         const GlyphAtlas &atlas = atlases_[i];
         if (atlas.pageCount() != 0) {
             views_[i] = {atlas.pageSize(), atlas.pageSize(), atlas.channels(), atlas.page(0)};
+            views_[i].generation = rasterizations_ + 1;
         }
     }
 }

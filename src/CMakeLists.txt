@@ -38,6 +38,7 @@ add_library(prism_render STATIC
     render/UberBatches.cpp
     render/vector/FineRaster.cpp
     render/vector/PathTiler.cpp
+    render/vector/StrokeExpander.cpp
     render/vector/VectorPath.cpp
     "${PRISM_SHADER_SOURCE}"
 )

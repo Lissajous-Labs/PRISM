@@ -82,24 +82,48 @@ kernel void spectrogramFft(texture2d<float, access::read> table [[texture(0)]],
         field.write(float4(energy), uint2(frame, u.rows - 1u - j));
     }
 }
+void spectrogramScan(threadgroup float *values, uint local, uint threads) {
+    for (uint stride = 1; stride < threads; stride <<= 1u) {
+        float addend = local >= stride ? values[local - stride] : 0.0f;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        values[local] += addend;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+}
 kernel void spectrogramPrefixRows(texture2d<float, access::read> field [[texture(0)]],
                                    texture2d<float, access::write> prefix [[texture(1)]],
-                                   uint row [[thread_position_in_grid]]) {
-    if (row >= field.get_height()) { return; }
-    float sum = 0.0f;
-    prefix.write(float4(0.0f), uint2(0, row + 1u));
-    for (uint x = 0; x < field.get_width(); ++x) {
-        sum += field.read(uint2(x, row)).r;
-        prefix.write(float4(sum, 0.0f, 0.0f, 1.0f), uint2(x + 1u, row + 1u));
+                                   uint row [[threadgroup_position_in_grid]],
+                                   uint local [[thread_index_in_threadgroup]],
+                                   uint threads [[threads_per_threadgroup]]) {
+    threadgroup float values[1024];
+    uint width = field.get_width();
+    float carry = 0.0f;
+    if (local == 0u) { prefix.write(float4(0.0f), uint2(0, row + 1u)); }
+    for (uint base = 0; base < width; base += threads) {
+        uint x = base + local;
+        values[local] = x < width ? field.read(uint2(x, row)).r : 0.0f;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        spectrogramScan(values, local, threads);
+        if (x < width) { prefix.write(float4(carry + values[local], 0.0f, 0.0f, 1.0f), uint2(x + 1u, row + 1u)); }
+        carry += values[threads - 1u];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 }
 kernel void spectrogramPrefixColumns(texture2d<float, access::read_write> prefix [[texture(0)]],
-                                      uint column [[thread_position_in_grid]]) {
-    if (column >= prefix.get_width()) { return; }
-    float sum = 0.0f;
-    prefix.write(float4(0.0f), uint2(column, 0));
-    for (uint y = 1; y < prefix.get_height(); ++y) {
-        sum += prefix.read(uint2(column, y)).r;
-        prefix.write(float4(sum, 0.0f, 0.0f, 1.0f), uint2(column, y));
+                                      uint column [[threadgroup_position_in_grid]],
+                                      uint local [[thread_index_in_threadgroup]],
+                                      uint threads [[threads_per_threadgroup]]) {
+    threadgroup float values[1024];
+    uint height = prefix.get_height();
+    float carry = 0.0f;
+    if (local == 0u) { prefix.write(float4(0.0f), uint2(column, 0)); }
+    for (uint base = 1; base < height; base += threads) {
+        uint y = base + local;
+        values[local] = y < height ? prefix.read(uint2(column, y)).r : 0.0f;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        spectrogramScan(values, local, threads);
+        if (y < height) { prefix.write(float4(carry + values[local], 0.0f, 0.0f, 1.0f), uint2(column, y)); }
+        carry += values[threads - 1u];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 }

@@ -126,19 +126,23 @@ bool MetalSpectrogram::dispatch() {
                                                   std::max<std::uint32_t>(s.period / 2, 32));
         [encoder dispatchThreadgroups:MTLSizeMake(count, 1, 1)
                 threadsPerThreadgroup:MTLSizeMake(threads, 1, 1)];
-        [encoder endEncoding];
-        encoder = [commands computeCommandEncoder];
+        [encoder memoryBarrierWithScope:MTLBarrierScopeTextures];
         [encoder setComputePipelineState:s.prefixRows];
         [encoder setTexture:s.field atIndex:0];
         [encoder setTexture:s.integral atIndex:1];
-        [encoder dispatchThreads:MTLSizeMake(s.rows, 1, 1)
-            threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
-        [encoder endEncoding];
-        encoder = [commands computeCommandEncoder];
+        [encoder dispatchThreadgroups:MTLSizeMake(s.rows, 1, 1)
+                threadsPerThreadgroup:MTLSizeMake(std::min<NSUInteger>(
+                                                      s.prefixRows.maxTotalThreadsPerThreadgroup,
+                                                      std::bit_ceil(s.frames)),
+                                                  1, 1)];
+        [encoder memoryBarrierWithScope:MTLBarrierScopeTextures];
         [encoder setComputePipelineState:s.prefixColumns];
         [encoder setTexture:s.integral atIndex:0];
-        [encoder dispatchThreads:MTLSizeMake(s.frames + 1, 1, 1)
-            threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+        [encoder dispatchThreadgroups:MTLSizeMake(s.frames + 1, 1, 1)
+                threadsPerThreadgroup:MTLSizeMake(std::min<NSUInteger>(
+                                                      s.prefixColumns.maxTotalThreadsPerThreadgroup,
+                                                      std::bit_ceil(s.rows)),
+                                                  1, 1)];
         [encoder endEncoding];
         [commands commit];
         [commands waitUntilCompleted];

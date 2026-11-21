@@ -1,7 +1,6 @@
 #include "../support/AllocGuard.h"
-#include "../support/Pcg.h"
+#include "../support/ReferenceScene.h"
 #include "backends/cpu/CpuRefBackend.h"
-#include "render/DrawList.h"
 
 #include <cmath>
 #include <iostream>
@@ -10,25 +9,9 @@
 
 namespace {
 using namespace prism;
-constexpr std::uint32_t white = render::packColor(255, 255, 255, 255);
-
-render::FrameView viewOf(const render::DrawList &list,
-                         std::span<const render::TextureView> textures = {},
-                         std::span<const float> gradients = {}) {
-    return {list.primitives(), list.payload(), list.transforms(),
-            list.clips(),      gradients,      textures};
-}
-
-std::vector<float> renderFull(render::RenderSurface &surface, const render::FrameView &view) {
-    const auto extent = surface.extent();
-    hal::DamageRegion damage(
-        {0, 0, static_cast<std::int32_t>(extent.width), static_cast<std::int32_t>(extent.height)});
-    std::vector<float> pixels(static_cast<std::size_t>(extent.width) * extent.height * 4);
-    if (!surface.render({view, &damage, {0, 0, 0, 1}}) || !surface.readback(pixels)) {
-        return {};
-    }
-    return pixels;
-}
+using test::renderFull;
+using test::viewOf;
+using test::white;
 
 bool checkExactCoverage() {
     backends::CpuRefSurface surface({{32, 16}});
@@ -59,59 +42,24 @@ bool checkRotatedArea() {
     return std::abs(coverage - expected) / expected < 2e-3;
 }
 
-void buildScene(render::DrawList &list, float shift, const render::TextureView &) {
-    list.clear();
-    list.roundedRect({4, 4, 120, 60}, {8, 2, 12, 0}, render::packColor(40, 60, 90, 255),
-                     render::BorderStyle{{2, 3, 4, 1}, render::packColor(200, 120, 40, 255)});
-    list.boxShadow({20 + shift, 20, 60 + shift, 50}, 6, 4, render::packColor(0, 0, 0, 160));
-    list.squircle({70, 10, 110, 50}, 5, render::packColor(250, 250, 250, 200));
-    list.arc({40, 90}, 14, 4, 0.5f, 2.0f, math::ArcCap::round, render::packColor(255, 0, 0, 255));
-    list.capsule({70 + shift, 80}, {110, 110}, 3, render::packColor(0, 255, 0, 255));
-    list.quadBezier({5, 120}, {40, 70}, {80, 125}, 1.5f, render::packColor(0, 0, 255, 255));
-    list.triangle({90, 70}, {125, 75}, {100, 120}, 3, render::packColor(255, 255, 0, 180));
-    const auto clip =
-        list.addClip(render::ClipKind::roundedRect, {0, 60, 64, 128}, {10, 10, 10, 10});
-    list.setClip(clip);
-    list.setBlend(hal::BlendMode::screen);
-    list.roundedRect({10, 64, 70, 100}, {}, render::packColor(80, 80, 200, 200));
-    list.setClip(render::noClip);
-    list.setBlend(hal::BlendMode::sourceOver);
-    list.texturedQuad(render::PrimitiveKind::glyphAlpha, {96, 96, 112, 112}, {0, 0, 1, 1}, 0,
-                      white);
-    list.texturedQuad(render::PrimitiveKind::glyphLcd, {112, 96, 128, 112}, {0, 0, 1, 1}, 0, white);
-    list.texturedQuad(render::PrimitiveKind::glyphMtsdf, {96, 112, 112, 128}, {0, 0, 1, 1}, 0,
-                      white, 4);
-    list.texturedQuad(render::PrimitiveKind::texturedQuad, {112, 112, 128, 128}, {0, 0, 1, 1}, 0,
-                      white);
-    list.plotStrip({0, 100, 64, 128}, 1, 8, 1.5f, white);
-}
-
 bool checkPartialDamage() {
-    std::vector<float> texels(8 * 8 * 4);
-    for (std::size_t i = 0; i < texels.size(); ++i) {
-        texels[i] = static_cast<float>((i * 37) % 101) / 100.0f;
-    }
-    std::vector<float> strip{0.1f, 0.4f, 0.0f, 0.0f, 0.3f, 0.9f, 0.0f, 0.0f, 0.2f, 0.5f, 0.0f,
-                             0.0f, 0.6f, 0.7f, 0.0f, 0.0f, 0.1f, 0.2f, 0.0f, 0.0f, 0.5f, 0.8f,
-                             0.0f, 0.0f, 0.4f, 0.4f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
-    const std::array<render::TextureView, 2> textures{render::TextureView{8, 8, 4, texels},
-                                                      render::TextureView{8, 1, 4, strip}};
+    const test::ReferenceTextures textures;
     backends::CpuRefSurface incremental({{128, 128}});
     backends::CpuRefSurface reference({{128, 128}});
     render::DrawList list;
-    buildScene(list, 0, textures[0]);
-    if (renderFull(incremental, viewOf(list, textures)).empty()) {
+    test::buildReferenceScene(list, 0);
+    if (renderFull(incremental, viewOf(list, textures.views)).empty()) {
         return false;
     }
-    buildScene(list, 9, textures[0]);
+    test::buildReferenceScene(list, 9);
     hal::DamageRegion damage({0, 0, 90, 70});
     damage.add({60, 70, 120, 120});
     std::vector<float> partial(128 * 128 * 4);
-    if (!incremental.render({viewOf(list, textures), &damage, {0, 0, 0, 1}}) ||
+    if (!incremental.render({viewOf(list, textures.views), &damage, {0, 0, 0, 1}}) ||
         !incremental.readback(partial)) {
         return false;
     }
-    const auto full = renderFull(reference, viewOf(list, textures));
+    const auto full = renderFull(reference, viewOf(list, textures.views));
     for (float value : full) {
         if (!std::isfinite(value)) {
             return false;
@@ -119,7 +67,7 @@ bool checkPartialDamage() {
     }
     {
         prism::test::AllocGuard guard;
-        if (!incremental.render({viewOf(list, textures), &damage, {0, 0, 0, 1}}) ||
+        if (!incremental.render({viewOf(list, textures.views), &damage, {0, 0, 0, 1}}) ||
             !guard.counts().empty()) {
             return false;
         }

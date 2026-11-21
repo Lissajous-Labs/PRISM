@@ -71,9 +71,13 @@ endif()
 
 add_library(prism_text STATIC
     text/Bidi.cpp
+    text/FontEngine.cpp
     text/FontFile.cpp
+    text/GlyphAtlas.cpp
     text/GlyphOutline.cpp
+    text/GlyphRasterizer.cpp
     text/LineBreak.cpp
+    text/MtsdfGenerator.cpp
     text/OpenTypeLayout.cpp
     text/TextShaper.cpp
     text/UnicodeClasses.cpp

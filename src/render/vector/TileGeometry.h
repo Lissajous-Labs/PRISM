@@ -33,7 +33,7 @@ struct TileGrid {
 
 [[nodiscard]] inline std::uint16_t quantize(float local) noexcept {
     return static_cast<std::uint16_t>(
-        std::lround(std::clamp(local, 0.0f, static_cast<float>(pathTileSize)) * pieceScale));
+        std::lrint(std::clamp(local, 0.0f, static_cast<float>(pathTileSize)) * pieceScale));
 }
 
 [[nodiscard]] inline float dequantize(std::uint16_t value) noexcept {

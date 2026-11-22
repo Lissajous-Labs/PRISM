@@ -202,6 +202,8 @@ cmake --preset bench && cmake --build --preset bench
 ctest --preset bench -L bench --output-on-failure
 ```
 
+W1 and W2 include CPU scene recording and Metal encoding in host timing and explicitly drain each offscreen submission before sampling GPU duration, so asynchronous submission cannot turn dropped work into a passing measurement. W2 measures 10,000 post-warmup frames and counts allocations across recording and encoding, including driver C++ allocations. These offscreen completion times are not display presentation intervals. On the development machine, the strict gates currently fail: W1 host Q50 0.2861 ms and GPU Q99 3.6786 ms; W2 GPU Q99 4.4688 ms and 30,000 allocations over 10,000 frames. W2 host Q99 0.3275 ms and completed-frame Q99 5.0891 ms meet their budgets. A debugger trace identifies a counted 128-byte allocation inside `AGXG13XFamilyCommandBuffer initWithQueue:retainedReferences:`; driver allocations are not excluded from the gate.
+
 `scripts/ci/verify_all.sh` runs every preset, the benchmark label, the commit-message audit and, when `PRISM_PLUGIN_VALIDATOR` and `PRISM_PLUGIN_ARTIFACTS` are set, plugin validation at strictness level 10. It lists skipped steps and fails on any red gate.
 
 ---

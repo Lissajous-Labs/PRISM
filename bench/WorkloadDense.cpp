@@ -74,13 +74,15 @@ int runDense() {
     for (int frame = 0; frame < 300; ++frame) {
         const Stopwatch encode;
         buildDense(list, row, frame);
-        const double encodeMs = encode.milliseconds();
         const render::FrameView view{list.primitives(), list.payload(),     list.transforms(),
                                      list.clips(),      gradients.rows(),   {},
                                      list.paths(),      list.pathSegments()};
-        if (!context->surface->render({view, &damage, {0.05, 0.05, 0.06, 1}})) {
+        if (!context->surface->render({view, &damage, {0.05, 0.05, 0.06, 1}}) ||
+            !context->metal().lastSubmitted()) {
             return 1;
         }
+        const double encodeMs = encode.milliseconds();
+        context->surface->waitIdle();
         if (frame >= 20) {
             host.add(encodeMs);
             gpu.add(context->metal().lastGpuMilliseconds());
@@ -95,9 +97,9 @@ int runDense() {
     report.below("primitives emitted", static_cast<double>(primitives), 10001);
     report.atLeast("primitives emitted", static_cast<double>(primitives), 10000);
     report.below("draw calls", static_cast<double>(drawCalls), 9);
-    report.below("upload bytes per primitive", static_cast<double>(uploadBytes) / 10000,
-                 472.0 / 6);
+    report.below("upload bytes per primitive", static_cast<double>(uploadBytes) / 10000, 472.0 / 6);
     report.below("host encode Q50 ms", host.quantile(0.5), 0.25);
+    report.below("GPU Q99 ms", gpu.quantile(0.99), 1.2);
     return report.finish();
 }
 }

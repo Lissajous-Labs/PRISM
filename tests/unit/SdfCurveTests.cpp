@@ -128,6 +128,47 @@ bool checkSuperellipses(prism::test::Pcg &random) {
     return worstDistance < 1e-4 && worstGradient < 1e-3;
 }
 
+bool checkSquircleSamples(prism::test::Pcg &random) {
+    double worstScaled = 0;
+    double worstNormal = 0;
+    double worstBand = 0;
+    for (int i = 0; i < 4000; ++i) {
+        const double power = random.range(4, 5);
+        const Vector2 half{random.range(20, 200), random.range(20, 200)};
+        const double angle = random.range(-std::numbers::pi, std::numbers::pi);
+        const Vector2 direction{std::cos(angle), std::sin(angle)};
+        const double scale = 1 / std::pow(std::pow(std::abs(direction.x) / half.x, power) +
+                                              std::pow(std::abs(direction.y) / half.y, power),
+                                          1 / power);
+        const double offset = random.range(-2, 2);
+        const Vector2 p = direction * scale + direction * offset;
+        const double exact = superellipse(p, half, power);
+        const auto sample = sampleSquircle(p, half, power);
+        const double band = std::abs(exact);
+        const double error = std::abs(sample.distance - exact);
+        if (band > 1e-3) {
+            worstScaled = std::max(worstScaled, error / (band * band));
+        } else {
+            worstBand = std::max(worstBand, error);
+        }
+        constexpr double h = 1e-5;
+        const Vector2 gradient{(sampleSquircle(p + Vector2{h, 0}, half, power).distance -
+                                sampleSquircle(p - Vector2{h, 0}, half, power).distance) /
+                                   (2 * h),
+                               (sampleSquircle(p + Vector2{0, h}, half, power).distance -
+                                sampleSquircle(p - Vector2{0, h}, half, power).distance) /
+                                   (2 * h)};
+        const double unitError = std::abs(length(gradient) - 1);
+        worstNormal = std::max(worstNormal, band > 1e-3 ? unitError / band : unitError);
+    }
+    std::cout << "Normalized squircle distance error/d^2: " << worstScaled
+              << ", boundary error: " << worstBand << ", gradient norm error/d: " << worstNormal
+              << '\n';
+    return worstScaled < 0.2 && worstBand < 1e-6 && worstNormal < 0.5 &&
+           std::isfinite(sampleSquircle({0, 0}, {10, 5}, 4).distance) &&
+           sampleSquircle({0, 0}, {10, 5}, 4).distance < 0;
+}
+
 bool checkDegenerateCurves() {
     const Arc tiny{{0, 0}, 10, 2, 0.5, 1e-4, ArcCap::butt};
     const Arc square{{0, 0}, 10, 2, 0.5, 1, ArcCap::square};
@@ -183,7 +224,7 @@ int main() {
     prism::test::Pcg random(17);
     const bool passed = checkDegenerateCurves() and checkBeziers(random) and
                         checkRoundArcs(random) and checkSuperellipses(random) and
-                        checkArcGradients(random);
+                        checkSquircleSamples(random) and checkArcGradients(random);
     prism::test::AllocGuard guard;
     const double guarded = quadraticBezier({1, 2}, {0, 0}, {4, 5}, {8, 0}) +
                            superellipse({3, 1}, {10, 6}, 5) +

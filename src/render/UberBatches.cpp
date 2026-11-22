@@ -15,6 +15,7 @@ bool compactShading(const PrimitiveDesc &desc) noexcept {
     case PrimitiveKind::roundedRect:
     case PrimitiveKind::circleArc:
     case PrimitiveKind::lineCapsule:
+    case PrimitiveKind::squircle:
         return true;
     case PrimitiveKind::boxShadow:
         return !desc.has(flags::inset) && desc.params[0] > 0 && desc.auxHandle != noTexture;

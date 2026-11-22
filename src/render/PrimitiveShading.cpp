@@ -255,9 +255,10 @@ ShadeResult shadePrimitive(const FrameView &frame, const PrimitiveDesc &desc, do
         break;
     case PrimitiveKind::squircle: {
         const LocalBox shape = rectBox(desc);
-        result = shadeField(frame, desc, transform, local, [&](Vector2 p) {
-            return math::superellipse(p - shape.center, shape.half, desc.params[0]);
-        });
+        const auto sample = math::sampleSquircle(local - shape.center, shape.half, desc.params[0]);
+        result = solid(
+            detail::scale(fillColor(frame, desc, local),
+                          detail::gradientCoverage(transform, sample.distance, sample.gradient)));
         break;
     }
     case PrimitiveKind::circleArc: {

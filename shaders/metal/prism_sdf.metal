@@ -38,6 +38,30 @@ FieldSample sampleCapsule(float2 p, float2 a, float2 b, float radius) {
     return result;
 }
 
+FieldSample sampleSquircle(float2 p, float2 half_, float power) {
+    float2 uv = abs(p) / half_;
+    float su = pow(uv.x, power);
+    float sv = pow(uv.y, power);
+    float sum = su + sv;
+    FieldSample result;
+    result.distance = -min(half_.x, half_.y);
+    result.gradient = float2(0.0f);
+    if (!(sum > 0.0f)) {
+        return result;
+    }
+    float radial = pow(sum, 1.0f / power);
+    float scale = radial / sum;
+    float2 gradient = float2(uv.x > 0.0f ? copysign(scale * su / (uv.x * half_.x), p.x) : 0.0f,
+                             uv.y > 0.0f ? copysign(scale * sv / (uv.y * half_.y), p.y) : 0.0f);
+    float norm = fast::length(gradient);
+    if (!(norm > 0.0f)) {
+        return result;
+    }
+    result.distance = (radial - 1.0f) / norm;
+    result.gradient = gradient / norm;
+    return result;
+}
+
 float crossProduct(float2 a, float2 b) {
     return a.x * b.y - a.y * b.x;
 }

@@ -101,7 +101,7 @@ float evaluateField(int mode, PrimitiveDesc d, device const float *payload, text
     switch (kind) {
     case kindSquircle: {
         LocalBox box = rectBox(d);
-        return sdSuperellipse(p - box.center, box.half_, d.params[0]);
+        return sampleSquircle(p - box.center, box.half_, d.params[0]).distance;
     }
     case kindArc:
         return sdArc(p, payloadPoint(payload, offset), d.params[0], d.params[1], d.params[2], d.params[3],
@@ -147,6 +147,14 @@ float fieldCoverage(int mode, TransformRecord t, PrimitiveDesc d, device const f
     } else if (mode == fieldPrimitive && (d.kindFlags & kindMask) == kindCapsule) {
         FieldSample sample = sampleCapsule(local, payloadPoint(payload, d.payloadOffset),
                                            payloadPoint(payload, d.payloadOffset + 2), d.params[0]);
+        distance = sample.distance;
+        if (abs(distance) >= reach) {
+            return distance < 0.0f ? 1.0f : 0.0f;
+        }
+        gradient = sample.gradient;
+    } else if (mode == fieldPrimitive && (d.kindFlags & kindMask) == kindSquircle) {
+        LocalBox box = rectBox(d);
+        FieldSample sample = sampleSquircle(local - box.center, box.half_, d.params[0]);
         distance = sample.distance;
         if (abs(distance) >= reach) {
             return distance < 0.0f ? 1.0f : 0.0f;

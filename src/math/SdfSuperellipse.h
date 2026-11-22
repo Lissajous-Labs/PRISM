@@ -66,4 +66,29 @@ struct SuperellipsePiece {
                                      detail::closestOnPiece(q, {half, power, cut, true}));
     return radial < 1 ? -distance : distance;
 }
+
+struct SquircleSample {
+    double distance;
+    Vector2 gradient;
+};
+
+[[nodiscard]] inline SquircleSample sampleSquircle(Vector2 p, Vector2 half, double power) noexcept {
+    const double u = std::abs(p.x) / half.x;
+    const double v = std::abs(p.y) / half.y;
+    const double su = std::pow(u, power);
+    const double sv = std::pow(v, power);
+    const double sum = su + sv;
+    if (!(sum > 0)) {
+        return {-std::min(half.x, half.y), {0, 0}};
+    }
+    const double radial = std::pow(sum, 1 / power);
+    const double scale = radial / sum;
+    const Vector2 gradient{u > 0 ? std::copysign(scale * su / (u * half.x), p.x) : 0,
+                           v > 0 ? std::copysign(scale * sv / (v * half.y), p.y) : 0};
+    const double norm = length(gradient);
+    if (!(norm > 0)) {
+        return {-std::min(half.x, half.y), {0, 0}};
+    }
+    return {(radial - 1) / norm, gradient * (1 / norm)};
+}
 }

@@ -91,20 +91,21 @@ id<CAMetalDrawable> encodePresentation(MetalSurfaceState &state, id<MTLCommandBu
 
 bool MetalSurface::render(const render::FrameRequest &request) {
     bool presented = false;
-    return submit(request, nullptr, presented);
+    return submit(request, nullptr, 0, presented);
 }
 
 bool MetalSurface::renderToLayer(const render::FrameRequest &request, void *layer,
-                                 bool &presented) {
+                                 double displayPeriod, bool &presented) {
     if (layer == nullptr) {
         presented = false;
         return false;
     }
 
-    return submit(request, layer, presented);
+    return submit(request, layer, displayPeriod, presented);
 }
 
-bool MetalSurface::submit(const render::FrameRequest &request, void *layer, bool &presented) {
+bool MetalSurface::submit(const render::FrameRequest &request, void *layer, double displayPeriod,
+                          bool &presented) {
     presented = false;
     state_->pollFrames();
     if (state_->lost || request.damage == nullptr || state_->completed == nil) {
@@ -138,7 +139,8 @@ bool MetalSurface::submit(const render::FrameRequest &request, void *layer, bool
         state_->fenceValue = ++state_->frameNumber;
         [commands encodeSignalEvent:state_->completed value:state_->fenceValue];
         if (drawable != nil && !target.presentsWithTransaction) {
-            [commands presentDrawable:drawable];
+            [commands presentDrawable:drawable
+                 afterMinimumDuration:std::max(0.0, displayPeriod - 0.0005)];
         }
         std::swap(static_cast<MetalFrameResources &>(*state_), slot);
         [commands commit];

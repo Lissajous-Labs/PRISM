@@ -15,11 +15,13 @@
     CVDisplayLinkRef legacyLink_;
     CFRunLoopSourceRef source_;
     std::atomic<double> timestamp_;
+    std::atomic<double> legacyPeriod_;
     prism::host::FrameTick tick_;
 }
 - (BOOL)startFrameClock:(prism::host::FrameTick)tick legacy:(BOOL)legacy;
 - (void)stopFrameClock;
 - (void)deliverFrame:(double)timestamp;
+@property(nonatomic) double framePeriod;
 @end
 
 @implementation PrismPassiveSurfaceView
@@ -32,6 +34,7 @@
 }
 
 - (void)displayTick:(CADisplayLink *)link API_AVAILABLE(macos(14.0)) {
+    self.framePeriod = link.targetTimestamp - link.timestamp;
     [self deliverFrame:link.targetTimestamp];
 }
 
@@ -43,6 +46,7 @@
         return NO;
     }
     tick_ = tick;
+    self.framePeriod = 1.0 / std::max<NSInteger>(self.window.screen.maximumFramesPerSecond, 1);
     if (@available(macOS 14.0, *)) {
         if (!legacy) {
             CADisplayLink *link = [self displayLinkWithTarget:self
@@ -58,7 +62,9 @@
     context.info = (__bridge void *)self;
     context.perform = [](void *info) {
         PrismPassiveSurfaceView *view = (__bridge PrismPassiveSurfaceView *)info;
-        [view deliverFrame:view->timestamp_.load(std::memory_order_acquire)];
+        const double timestamp = view->timestamp_.load(std::memory_order_acquire);
+        view.framePeriod = view->legacyPeriod_.load(std::memory_order_relaxed);
+        [view deliverFrame:timestamp];
     };
     source_ = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &context);
     NSNumber *number = self.window.screen.deviceDescription[@"NSScreenNumber"];
@@ -73,6 +79,11 @@
                              CVOptionFlags, CVOptionFlags *, void *info) -> CVReturn {
         PrismPassiveSurfaceView *view = (__bridge PrismPassiveSurfaceView *)info;
         const double seconds = static_cast<double>(output->hostTime) / CVGetHostClockFrequency();
+        if (output->videoTimeScale > 0) {
+            view->legacyPeriod_.store(static_cast<double>(output->videoRefreshPeriod) /
+                                          static_cast<double>(output->videoTimeScale),
+                                      std::memory_order_relaxed);
+        }
         view->timestamp_.store(seconds, std::memory_order_release);
         CFRunLoopSourceSignal(view->source_);
         CFRunLoopWakeUp(CFRunLoopGetMain());
@@ -264,6 +275,7 @@ bool PassiveSurfaceHost::renderFrame(render::RenderSurface &surface,
     if (impl_->view == nil || metal == nullptr) {
         return false;
     }
-    return metal->renderToLayer(request, (__bridge void *)impl_->view.layer, presented);
+    return metal->renderToLayer(request, (__bridge void *)impl_->view.layer,
+                                impl_->view.framePeriod, presented);
 }
 }

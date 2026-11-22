@@ -35,12 +35,10 @@ class UberBatches {
     void build(std::span<const PrimitiveDesc> primitives, bool earlyDepth);
 
     [[nodiscard]] std::span<const std::uint32_t> opaqueIndices() const noexcept { return opaque_; }
-    [[nodiscard]] std::span<const std::uint32_t> ordered() const noexcept { return ordered_; }
     [[nodiscard]] std::span<const DrawRun> runs() const noexcept { return runs_; }
 
   private:
     std::vector<std::uint32_t> opaque_;
-    std::vector<std::uint32_t> ordered_;
     std::vector<DrawRun> runs_;
 };
 

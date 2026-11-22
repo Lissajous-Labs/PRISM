@@ -23,6 +23,7 @@ void MetalShadowCache::prepare(MetalDeviceState &device, const render::FrameView
                                id<MTLBuffer> primitives) {
     pending_.clear();
     bool stepsReady = false;
+    std::size_t recent = 0;
     auto *gpuPrimitives = static_cast<render::PrimitiveDesc *>(primitives.contents);
     for (std::size_t i = 0; i < frame.primitives.size(); ++i) {
         const auto &d = frame.primitives[i];
@@ -53,11 +54,13 @@ void MetalShadowCache::prepare(MetalDeviceState &device, const render::FrameView
         if (!(step > 0)) {
             continue;
         }
-        const auto found =
-            std::find_if(entries_.begin(), entries_.end(), [&](const ShadowSprite &e) {
-                return e.step == step && e.half[0] == half[0] && e.half[1] == half[1] &&
-                       e.radius == radius && e.sigma == sigma;
-            });
+        const auto matches = [&](const ShadowSprite &e) {
+            return e.step == step && e.half[0] == half[0] && e.half[1] == half[1] &&
+                   e.radius == radius && e.sigma == sigma;
+        };
+        const auto found = recent < entries_.size() && matches(entries_[recent])
+                               ? entries_.begin() + static_cast<std::ptrdiff_t>(recent)
+                               : std::find_if(entries_.begin(), entries_.end(), matches);
         std::uint32_t index;
         if (found != entries_.end()) {
             index = static_cast<std::uint32_t>(found - entries_.begin());
@@ -85,6 +88,7 @@ void MetalShadowCache::prepare(MetalDeviceState &device, const render::FrameView
             pending_.push_back(index);
         }
         gpuPrimitives[i].auxHandle = index;
+        recent = index;
     }
     if (!pending_.empty() || table_ == nil) {
         upload(device.device, table_, entries_.data(), entries_.size() * sizeof(ShadowSprite));

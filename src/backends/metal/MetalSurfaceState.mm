@@ -146,7 +146,7 @@ void MetalSurfaceState::encodeScratch(id<MTLCommandBuffer> commands, FrameUnifor
             }
         }
         const auto orderedFirst = static_cast<std::uint32_t>(scratchIndices.size());
-        for (const std::uint32_t index : batches.ordered()) {
+        for (std::uint32_t index = 0; index < primitiveBounds.size(); ++index) {
             if (overlaps(index, rect)) {
                 scratchIndices.push_back(index);
             }

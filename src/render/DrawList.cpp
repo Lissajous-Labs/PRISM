@@ -118,7 +118,8 @@ PrimitiveDesc &DrawList::emit(PrimitiveKind kind, RectF bounds, std::uint32_t co
 
 std::uint32_t DrawList::appendPayload(std::initializer_list<float> values) {
     const auto offset = static_cast<std::uint32_t>(payload_.size());
-    payload_.insert(payload_.end(), values);
+    payload_.resize(payload_.size() + values.size());
+    std::copy(values.begin(), values.end(), payload_.begin() + offset);
     return offset;
 }
 

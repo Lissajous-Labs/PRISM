@@ -32,12 +32,12 @@ std::optional<FontEngine::Placement> FontEngine::glyphFor(TextTier tier,
     key = math::mix64(key);
     GlyphAtlas &atlas = atlases_[static_cast<std::size_t>(tier)];
     const FontFile &font = *fonts_[glyph.font];
-    if (emptyGlyphs_.contains(key)) {
-        return std::nullopt;
-    }
     if (const auto found = atlas.find(key, frame_)) {
         const Placement &placement = placements_.at(key);
         return Placement{*found, placement.left, placement.top, placement.scale};
+    }
+    if (emptyGlyphs_.contains(key)) {
+        return std::nullopt;
     }
     switch (tier) {
     case TextTier::alpha:

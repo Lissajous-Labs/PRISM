@@ -32,6 +32,24 @@ void randomPath(test::Pcg &random, render::DrawList &list) {
     const auto rule = random.unit() < 0.5 ? render::FillRule::nonZero : render::FillRule::evenOdd;
     list.fillPath(path, render::packColor(255, 255, 255, 255), rule);
 }
+
+void clippedScene(render::DrawList &list, int frame) {
+    list.clear();
+    list.roundedRect({0, 0, 513, 257}, {}, render::packColor(19, 19, 19, 255));
+    const auto clip = list.addClip(render::ClipKind::roundedRect, {17.25f, 12.5f, 410.75f, 230.25f},
+                                   {11, 11, 11, 11});
+    list.setClip(clip);
+    const double x = 20.25 + frame * 2;
+    render::VectorPath path;
+    path.moveTo({x, -5.5});
+    path.lineTo({470.5, 190.75});
+    path.lineTo({x, 251.25});
+    path.close();
+    list.fillPath(path, render::packColor(245, 247, 217, 220));
+    list.setClip(render::noClip);
+    list.roundedRect({40, 35, 180, 140}, {6, 6, 6, 6}, render::packColor(255, 169, 35, 255));
+    list.fillPath(path, render::packColor(88, 205, 251, 80));
+}
 }
 
 int main() {
@@ -141,6 +159,25 @@ int main() {
     std::cout << "Layered half-float vector relative RGB RMS: " << relativeRms << '\n';
     if (not std::isfinite(relativeRms) or relativeRms >= 0.0065) {
         return 1;
+    }
+
+    std::vector<float> partialExpected(static_cast<std::size_t>(513 * 257 * 4));
+    std::vector<float> partialActual(partialExpected.size());
+    hal::DamageRegion damage({0, 0, 513, 257});
+    for (int frame = 0; frame < 10; ++frame) {
+        clippedScene(list, frame);
+        const auto view = test::viewOf(list);
+        if (not reference.render({view, &damage, {0, 0, 0, 1}}) or
+            not gpu->render({view, &damage, {0, 0, 0, 1}}) or
+            not reference.readback(partialExpected) or not gpu->readback(partialActual)) {
+            return 1;
+        }
+        for (std::size_t i = 0; i < partialExpected.size(); ++i) {
+            worst = std::max(worst,
+                             static_cast<double>(std::abs(partialExpected[i] - partialActual[i])));
+        }
+        damage.assign({9, 7, 98, 179});
+        damage.add({270, 48, 497, 251});
     }
 
     std::cout << "GPU vector coverage worst difference: " << worst << '\n';

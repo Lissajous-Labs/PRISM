@@ -61,7 +61,8 @@ PathUniforms uniformsFor(const MetalPathBuffers &b, const render::PathDraw &draw
 }
 
 void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> commands,
-                              const render::FrameView &frame, hal::Extent extent) {
+                              const render::FrameView &frame, hal::Extent extent,
+                              id<MTLBuffer> transforms, id<MTLBuffer> clips) {
     if (frame.paths.empty()) {
         return;
     }
@@ -71,7 +72,7 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
     }
     id<MTLDevice> gpu = device.device;
     batchRecords_.resize(frame.paths.size());
-    std::uint32_t maxSegments = 1, maxRows = 1, maxPartitions = 1;
+    std::uint32_t maxSegments = 1, maxColumns = 1, maxRows = 1, maxPartitions = 1;
     for (std::size_t i = 0; i < frame.paths.size(); ++i) {
         const auto &draw = frame.paths[i];
         const auto segments = frame.pathSegments.subspan(draw.firstSegment, draw.segmentCount);
@@ -109,14 +110,20 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
 
         upload(gpu, b.pieces, nullptr, pieces * 8);
         upload(gpu, b.scanState, nullptr, ((tiles + scanPartition - 1) / scanPartition + 1) * 4);
-        const auto uniforms = uniformsFor(b, draw);
+        upload(gpu, b.coverage, nullptr, tiles * tileSize * tileSize * sizeof(std::uint16_t));
+        auto uniforms = uniformsFor(b, draw);
+        uniforms.depth = 1.0f - (static_cast<float>(draw.insertAfter) + 0.5f) /
+                                    static_cast<float>(frame.primitives.size() + 1);
         auto &record = batchRecords_[i];
         std::memcpy(record.uniforms.data(), &uniforms, sizeof(uniforms));
-        record.buffers = {b.segments.gpuAddress, b.counts.gpuAddress,    b.rowDeltas.gpuAddress,
-                          b.offsets.gpuAddress,  b.scanState.gpuAddress, b.backdrops.gpuAddress,
-                          b.cursors.gpuAddress,  b.pieces.gpuAddress};
+        record.buffers = {b.segments.gpuAddress,  b.counts.gpuAddress,
+                          b.rowDeltas.gpuAddress, b.offsets.gpuAddress,
+                          b.scanState.gpuAddress, b.backdrops.gpuAddress,
+                          b.cursors.gpuAddress,   b.pieces.gpuAddress,
+                          b.coverage.gpuAddress,  0};
         maxSegments = std::max(maxSegments, draw.segmentCount);
         maxRows = std::max(maxRows, b.rows);
+        maxColumns = std::max(maxColumns, b.columns);
         maxPartitions =
             std::max(maxPartitions, (uniforms.tileCount + scanPartition - 1) / scanPartition);
     }
@@ -136,8 +143,8 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
     for (std::size_t i = 0; i < frame.paths.size(); ++i) {
         const auto &b = buffers_[i];
         [encoder useResource:b.segments usage:MTLResourceUsageRead];
-        for (id<MTLBuffer> buffer :
-             {b.counts, b.rowDeltas, b.offsets, b.scanState, b.backdrops, b.cursors, b.pieces}) {
+        for (id<MTLBuffer> buffer : {b.counts, b.rowDeltas, b.offsets, b.scanState, b.backdrops,
+                                     b.cursors, b.pieces, b.coverage}) {
             [encoder useResource:buffer usage:MTLResourceUsageRead | MTLResourceUsageWrite];
         }
     }
@@ -150,62 +157,31 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
     [encoder dispatchThreadgroups:MTLSizeMake(maxPartitions, paths, 1)
             threadsPerThreadgroup:MTLSizeMake(scanPartition, 1, 1)];
     [encoder memoryBarrierWithScope:MTLBarrierScopeBuffers];
-    [encoder setComputePipelineState:device.pathBackdrop];
-    [encoder dispatchThreads:MTLSizeMake(maxRows, paths, 1)
-        threadsPerThreadgroup:MTLSizeMake(32, 1, 1)];
-    [encoder memoryBarrierWithScope:MTLBarrierScopeBuffers];
     [encoder setComputePipelineState:device.pathScatter];
     [encoder dispatchThreads:MTLSizeMake(maxSegments, paths, 1)
         threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+    [encoder memoryBarrierWithScope:MTLBarrierScopeBuffers];
+    [encoder setComputePipelineState:device.pathFine];
+    [encoder setBuffer:transforms offset:0 atIndex:1];
+    [encoder setBuffer:clips offset:0 atIndex:2];
+    [encoder dispatchThreadgroups:MTLSizeMake(maxColumns, maxRows, paths)
+            threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
     [encoder endEncoding];
 }
 
-void MetalPathEngine::encodeFine(MetalDeviceState &device, id<MTLCommandBuffer> commands,
-                                 std::size_t path, const render::FrameView &frame,
-                                 std::span<const hal::Rect> damage,
-                                 const PathFineTargets &targets) {
-    const auto &draw = frame.paths[path];
-    const MetalPathBuffers &b = buffers_[path];
-    id<MTLComputeCommandEncoder> encoder = nil;
-    for (const hal::Rect &rect : damage) {
-        const auto first = [](std::int32_t value) { return value / tileSize; };
-        const auto last = [](std::int32_t value) { return (value + tileSize - 1) / tileSize; };
-        const auto x0 =
-            std::max<std::int32_t>(first(rect.x0), static_cast<std::int32_t>(b.originX));
-        const auto y0 =
-            std::max<std::int32_t>(first(rect.y0), static_cast<std::int32_t>(b.originY));
-        const auto x1 =
-            std::min<std::int32_t>(last(rect.x1), static_cast<std::int32_t>(b.originX + b.columns));
-        const auto y1 =
-            std::min<std::int32_t>(last(rect.y1), static_cast<std::int32_t>(b.originY + b.rows));
-        if (x1 <= x0 || y1 <= y0) {
-            continue;
-        }
-        PathUniforms uniforms = uniformsFor(b, draw);
-        uniforms.depth = 1.0f - (static_cast<float>(draw.insertAfter) + 0.5f) /
-                                    static_cast<float>(targets.maxDepth + 1);
-        uniforms.damage[0] = rect.x0;
-        uniforms.damage[1] = rect.y0;
-        uniforms.damage[2] = rect.x1;
-        uniforms.damage[3] = rect.y1;
-        uniforms.origin[2] = x0 - static_cast<std::int32_t>(b.originX);
-        uniforms.origin[3] = y0 - static_cast<std::int32_t>(b.originY);
-        if (encoder == nil) {
-            encoder = [commands computeCommandEncoder];
-            [encoder setComputePipelineState:device.pathFine];
-            [encoder setBuffer:b.offsets offset:0 atIndex:0];
-            [encoder setBuffer:b.backdrops offset:0 atIndex:1];
-            [encoder setBuffer:b.pieces offset:0 atIndex:2];
-            [encoder setBuffer:targets.transforms offset:0 atIndex:4];
-            [encoder setBuffer:targets.clips offset:0 atIndex:5];
-            [encoder setTexture:targets.color atIndex:0];
-            [encoder setTexture:targets.depth atIndex:1];
-        }
-        [encoder setBytes:&uniforms length:sizeof(uniforms) atIndex:3];
-        [encoder dispatchThreadgroups:MTLSizeMake(static_cast<NSUInteger>(x1 - x0),
-                                                  static_cast<NSUInteger>(y1 - y0), 1)
-                threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
-    }
-    [encoder endEncoding];
+void MetalPathEngine::composite(MetalDeviceState &device, id<MTLRenderCommandEncoder> encoder,
+                                std::size_t path) {
+    [encoder setRenderPipelineState:device.pathComposite];
+    [encoder setDepthStencilState:device.depthTest];
+    [encoder setVertexBuffer:batchBuffer_ offset:0 atIndex:0];
+    [encoder setFragmentBuffer:batchBuffer_ offset:0 atIndex:0];
+    [encoder useResource:buffers_[path].coverage
+                   usage:MTLResourceUsageRead
+                  stages:MTLRenderStageFragment];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                vertexStart:0
+                vertexCount:6
+              instanceCount:1
+               baseInstance:path];
 }
 }

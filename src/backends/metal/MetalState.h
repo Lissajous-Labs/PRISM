@@ -35,7 +35,7 @@ struct MetalDeviceState {
     id<MTLRenderPipelineState> presentDrawable = nil;
     id<MTLComputePipelineState> pathBinCount = nil;
     id<MTLComputePipelineState> pathScan = nil;
-    id<MTLComputePipelineState> pathBackdrop = nil;
+    id<MTLRenderPipelineState> pathComposite = nil;
     id<MTLComputePipelineState> pathBatchScan = nil;
     id<MTLComputePipelineState> pathScatter = nil;
     id<MTLComputePipelineState> pathFine = nil;

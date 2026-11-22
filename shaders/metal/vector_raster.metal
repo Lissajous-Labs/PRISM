@@ -26,6 +26,8 @@ struct BatchPath {
     device int *backdrops;
     device atomic_uint *cursors;
     device uint2 *pieces;
+    device half *coverage;
+    ulong reserved;
 };
 
 uint quantizeLocal(float value) {
@@ -249,6 +251,15 @@ kernel void pathBatchScan(constant BatchPath *paths [[buffer(0)]],
     if (group.x >= (path.uniforms.tileCount + scanPartition - 1) / scanPartition) {
         return;
     }
+    uint row = group.x * scanPartition + local.x;
+    if (row < path.uniforms.rows) {
+        device const int *deltas = reinterpret_cast<device const int *>(path.rowDeltas);
+        int running = 0;
+        for (uint column = 0; column < path.uniforms.columns; ++column) {
+            running += deltas[row * (path.uniforms.columns + 1) + column];
+            path.backdrops[row * path.uniforms.columns + column] = running;
+        }
+    }
     threadgroup uint partition;
     threadgroup uint sums[scanPartition];
     threadgroup uint prefix;
@@ -256,22 +267,6 @@ kernel void pathBatchScan(constant BatchPath *paths [[buffer(0)]],
              path.scanState, local.x, lane, simdGroup, simdWidth, partition, sums, prefix);
 }
 
-kernel void pathBackdrop(constant BatchPath *paths [[buffer(0)]],
-                         uint2 position [[thread_position_in_grid]]) {
-    constant BatchPath &path = paths[position.y];
-    constant PathUniforms &u = path.uniforms;
-    uint row = position.x;
-    device const int *rowDeltas = reinterpret_cast<device const int *>(path.rowDeltas);
-    device int *backdrops = path.backdrops;
-    if (row >= u.rows) {
-        return;
-    }
-    int running = 0;
-    for (uint column = 0; column < u.columns; ++column) {
-        running += rowDeltas[row * (u.columns + 1) + column];
-        backdrops[row * u.columns + column] = running;
-    }
-}
 
 kernel void pathScatter(constant BatchPath *paths [[buffer(0)]],
                         uint2 position [[thread_position_in_grid]]) {
@@ -328,23 +323,26 @@ float windingToAlpha(float winding, uint rule) {
     return rule == 0u ? min(magnitude, 1.0f) : 1.0f - abs(fmod(magnitude, 2.0f) - 1.0f);
 }
 
-kernel void pathFine(device const uint *offsets [[buffer(0)]], device const int *backdrops [[buffer(1)]],
-                     device const uint2 *pieces [[buffer(2)]], constant PathUniforms &u [[buffer(3)]],
-                     device const TransformRecord *transforms [[buffer(4)]], device const ClipRecord *clips [[buffer(5)]],
-                     texture2d<float, access::read_write> target [[texture(0)]],
-                     depth2d<float, access::read> depth [[texture(1)]], uint2 tileIndex [[threadgroup_position_in_grid]],
-                     uint2 local [[thread_position_in_threadgroup]]) {
+kernel void pathFine(constant BatchPath *paths [[buffer(0)]],
+                     device const TransformRecord *transforms [[buffer(1)]],
+                     device const ClipRecord *clips [[buffer(2)]],
+                     uint3 tileIndex [[threadgroup_position_in_grid]],
+                     uint3 local [[thread_position_in_threadgroup]]) {
+    constant BatchPath &path = paths[tileIndex.z];
+    constant PathUniforms &u = path.uniforms;
+    if (tileIndex.x >= u.columns || tileIndex.y >= u.rows) {
+        return;
+    }
     threadgroup uint2 shared[256];
-    uint2 localTile = tileIndex + uint2(u.origin.zw);
-    uint tile = localTile.y * u.columns + localTile.x;
-    uint first = offsets[tile];
-    uint last = offsets[tile + 1];
+    uint tile = tileIndex.y * u.columns + tileIndex.x;
+    uint first = path.offsets[tile];
+    uint last = path.offsets[tile + 1];
     uint flat = local.y * 16u + local.x;
-    int sum = backdrops[tile] * int(windingScale);
+    int sum = path.backdrops[tile] * int(windingScale);
     for (uint chunk = first; chunk < last; chunk += 256u) {
         uint count = min(256u, last - chunk);
         if (flat < count) {
-            shared[flat] = pieces[chunk + flat];
+            shared[flat] = path.pieces[chunk + flat];
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
         for (uint p = 0; p < count; ++p) {
@@ -352,27 +350,42 @@ kernel void pathFine(device const uint *offsets [[buffer(0)]], device const int 
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
     }
-    uint2 pixel = (localTile + uint2(u.origin.xy)) * 16u + local;
-    if (pixel.x >= target.get_width() || pixel.y >= target.get_height()) {
-        return;
-    }
-    if (int(pixel.x) < u.damage.x || int(pixel.y) < u.damage.y || int(pixel.x) >= u.damage.z || int(pixel.y) >= u.damage.w) {
-        return;
-    }
-    if (depth.read(pixel) < u.depth) {
-        return;
-    }
+    uint2 localPixel = tileIndex.xy * 16u + local.xy;
+    uint2 pixel = localPixel + uint2(u.origin.xy) * 16u;
     float coverage = windingToAlpha(float((sum + 128) >> 8) / 4096.0f, u.fillRule);
-    if (coverage <= 0.0f) {
-        return;
-    }
     if (u.clipId != 0u) {
         FrameBuffers frame;
         frame.transforms = transforms;
         frame.clips = clips;
         coverage *= clipCoverage(frame, ushort(u.clipId), float2(pixel) + 0.5f);
     }
-    float4 source = decodeColor(u.color) * coverage;
-    float4 destination = target.read(pixel);
-    target.write(source + (1.0f - source.a) * destination, pixel);
+    path.coverage[localPixel.y * u.columns * 16u + localPixel.x] = half(coverage);
+}
+
+struct PathCompositeOut {
+    float4 position [[position]];
+    uint path [[flat]];
+};
+
+vertex PathCompositeOut pathCompositeVertex(uint vertexId [[vertex_id]],
+                                            uint instanceId [[instance_id]],
+                                            constant BatchPath *paths [[buffer(0)]],
+                                            constant FrameUniforms &frame [[buffer(4)]]) {
+    constant PathUniforms &u = paths[instanceId].uniforms;
+    float2 point = (float2(u.origin.xy) +
+                    quadCorners[vertexId] * float2(u.columns, u.rows)) * 16.0f - frame.origin;
+    PathCompositeOut out;
+    out.position = float4(point.x / frame.viewport.x * 2.0f - 1.0f,
+                           1.0f - point.y / frame.viewport.y * 2.0f, u.depth, 1.0f);
+    out.path = instanceId;
+    return out;
+}
+
+[[early_fragment_tests]] fragment float4 pathCompositeFragment(
+    PathCompositeOut in [[stage_in]], constant BatchPath *paths [[buffer(0)]],
+    constant FrameUniforms &frame [[buffer(4)]]) {
+    constant BatchPath &path = paths[in.path];
+    uint2 local = uint2(in.position.xy + frame.origin) - uint2(path.uniforms.origin.xy) * 16u;
+    float coverage = float(path.coverage[local.y * path.uniforms.columns * 16u + local.x]);
+    return decodeColor(path.uniforms.color) * coverage;
 }

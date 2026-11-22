@@ -13,10 +13,10 @@
 namespace prism::backends {
 struct MetalPathBatch {
     std::array<std::uint32_t, 16> uniforms;
-    std::array<std::uint64_t, 8> buffers;
+    std::array<std::uint64_t, 10> buffers;
 };
 
-static_assert(sizeof(MetalPathBatch) == 128);
+static_assert(sizeof(MetalPathBatch) == 144);
 
 struct MetalPathBuffers {
     id<MTLBuffer> segments = nil;
@@ -27,27 +27,19 @@ struct MetalPathBuffers {
     id<MTLBuffer> backdrops = nil;
     id<MTLBuffer> cursors = nil;
     id<MTLBuffer> pieces = nil;
+    id<MTLBuffer> coverage = nil;
     std::uint32_t originX = 0;
     std::uint32_t originY = 0;
     std::uint32_t columns = 0;
     std::uint32_t rows = 0;
 };
 
-struct PathFineTargets {
-    id<MTLTexture> color;
-    id<MTLTexture> depth;
-    id<MTLBuffer> transforms;
-    id<MTLBuffer> clips;
-    std::uint32_t maxDepth;
-};
-
 class MetalPathEngine {
   public:
     void prepare(MetalDeviceState &device, id<MTLCommandBuffer> commands,
-                 const render::FrameView &frame, hal::Extent extent);
-    void encodeFine(MetalDeviceState &device, id<MTLCommandBuffer> commands, std::size_t path,
-                    const render::FrameView &frame, std::span<const hal::Rect> damage,
-                    const PathFineTargets &targets);
+                 const render::FrameView &frame, hal::Extent extent, id<MTLBuffer> transforms,
+                 id<MTLBuffer> clips);
+    void composite(MetalDeviceState &device, id<MTLRenderCommandEncoder> encoder, std::size_t path);
 
   private:
     std::vector<MetalPathBuffers> buffers_;

@@ -409,7 +409,7 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
     formants.encode(*device, commands, primitives, payload, transforms);
     halftones.encode(*device, commands, primitives, payload, gradients, textures);
     shadows.encode(*device, commands);
-    paths.prepare(*device, commands, request.view, extent);
+    paths.prepare(*device, commands, request.view, extent, transforms, clips);
     MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
     pass.colorAttachments[0].texture = color;
     pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
@@ -422,7 +422,6 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
         static_cast<float>(request.clear.b), static_cast<float>(request.clear.a)};
     const hal::Rect viewport{0, 0, static_cast<std::int32_t>(extent.width),
                              static_cast<std::int32_t>(extent.height)};
-    const PathFineTargets targets{color, depth, transforms, clips, primitiveCount};
     const auto &view = request.view;
     damageRects.clear();
     if (recoverDamage || !view.effects.empty()) {
@@ -486,7 +485,7 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
         const bool fullFrame = damageRects.size() == 1 && damageRects[0].x0 == viewport.x0 &&
                                damageRects[0].y0 == viewport.y0 &&
                                damageRects[0].x1 == viewport.x1 && damageRects[0].y1 == viewport.y1;
-        const bool split = !view.paths.empty() || !view.effects.empty();
+        const bool split = !view.effects.empty();
         pass.colorAttachments[0].loadAction = fullFrame ? MTLLoadActionDontCare : MTLLoadActionLoad;
         pass.depthAttachment.loadAction = MTLLoadActionDontCare;
         pass.depthAttachment.storeAction = split ? MTLStoreActionStore : MTLStoreActionDontCare;
@@ -531,13 +530,25 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
                 drawRange(encoder, cursor, insertAfter);
                 cursor = insertAfter;
             }
-            if (encoder != nil) {
-                [encoder endEncoding];
-                encoder = nil;
-            }
             if (pathNext) {
-                paths.encodeFine(*device, commands, path++, view, damageRects, targets);
+                if (encoder == nil) {
+                    pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+                    pass.depthAttachment.loadAction = MTLLoadActionLoad;
+                    pass.depthAttachment.storeAction = MTLStoreActionStore;
+                    encoder = beginPass(commands, pass, uniforms);
+                }
+                for (const auto &rect : damageRects) {
+                    scissor(encoder, rect);
+                    paths.composite(*device, encoder, path);
+                    ++drawCalls;
+                }
+                ++path;
+                bindUber(encoder, uniforms);
             } else {
+                if (encoder != nil) {
+                    [encoder endEncoding];
+                    encoder = nil;
+                }
                 effects.backdrop(*device, commands, color, view.effects[effect++], extent);
             }
         }

@@ -162,7 +162,8 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
     state->pathBinCount = compute("pathBinCount");
     state->pathScan = compute("pathScan");
     state->pathBatchScan = compute("pathBatchScan");
-    state->pathBackdrop = compute("pathBackdrop");
+    state->pathComposite = buildPipeline(state->device, state->library, "pathCompositeVertex",
+                                         "pathCompositeFragment", render::UberPipeline::sourceOver);
     state->pathScatter = compute("pathScatter");
     state->pathFine = compute("pathFine");
     state->blurPaired = compute("blurPairedPass");

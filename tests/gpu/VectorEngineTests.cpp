@@ -180,6 +180,30 @@ int main() {
         damage.add({270, 48, 497, 251});
     }
 
+    constexpr std::array extents{hal::Extent{16, 1601}, hal::Extent{1601, 16},
+                                 hal::Extent{257, 769}};
+    for (const auto extent : extents) {
+        reference.resize(extent);
+        gpu->resize(extent);
+        list.clear();
+        render::VectorPath path;
+        const double width = extent.width, height = extent.height;
+        path.moveTo({-7.25, -3.75});
+        path.lineTo({width + 5.125, height * 0.7});
+        path.lineTo({width * 0.25, height + 3.25});
+        path.close();
+        list.fillPath(path, render::packColor(255, 255, 255, 255));
+        const auto expectedShape = test::renderFull(reference, test::viewOf(list));
+        const auto actualShape = test::renderFull(*gpu, test::viewOf(list));
+        if (expectedShape.empty() or actualShape.empty()) {
+            return 1;
+        }
+        for (std::size_t i = 0; i < expectedShape.size(); ++i) {
+            worst =
+                std::max(worst, static_cast<double>(std::abs(expectedShape[i] - actualShape[i])));
+        }
+    }
+
     std::cout << "GPU vector coverage worst difference: " << worst << '\n';
     if (worst >= 1e-3) {
         std::cerr << "GPU vector engine contract failed\n";

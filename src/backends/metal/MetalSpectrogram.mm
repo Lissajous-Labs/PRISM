@@ -26,6 +26,18 @@ id<MTLTexture> texture(id<MTLDevice> device, MTLPixelFormat format, std::size_t 
     desc.storageMode = writable ? MTLStorageModePrivate : MTLStorageModeShared;
     return [device newTextureWithDescriptor:desc];
 }
+
+void scan(id<MTLComputeCommandEncoder> encoder, id<MTLComputePipelineState> pipeline,
+          std::uint32_t groups, std::uint32_t items) {
+    const NSUInteger width = pipeline.threadExecutionWidth;
+    const NSUInteger threads = std::max(
+        width, std::min<NSUInteger>(pipeline.maxTotalThreadsPerThreadgroup, std::bit_ceil(items)));
+    const NSUInteger scratchBytes = ((threads / width + 1) * sizeof(float) + 15) & ~NSUInteger{15};
+    [encoder setComputePipelineState:pipeline];
+    [encoder setThreadgroupMemoryLength:scratchBytes atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake(groups, 1, 1)
+            threadsPerThreadgroup:MTLSizeMake(threads, 1, 1)];
+}
 }
 struct MetalSpectrogram::Impl {
     std::shared_ptr<MetalDeviceState> device;
@@ -144,22 +156,12 @@ bool MetalSpectrogram::encode(void *commandBuffer) {
         [encoder dispatchThreadgroups:MTLSizeMake(count, 1, 1)
                 threadsPerThreadgroup:MTLSizeMake(threads, 1, 1)];
         [encoder memoryBarrierWithScope:MTLBarrierScopeTextures];
-        [encoder setComputePipelineState:s.prefixRows];
         [encoder setTexture:s.field atIndex:0];
         [encoder setTexture:s.integral atIndex:1];
-        [encoder dispatchThreadgroups:MTLSizeMake(s.rows, 1, 1)
-                threadsPerThreadgroup:MTLSizeMake(std::min<NSUInteger>(
-                                                      s.prefixRows.maxTotalThreadsPerThreadgroup,
-                                                      std::bit_ceil(s.frames)),
-                                                  1, 1)];
+        scan(encoder, s.prefixRows, s.rows, s.frames);
         [encoder memoryBarrierWithScope:MTLBarrierScopeTextures];
-        [encoder setComputePipelineState:s.prefixColumns];
         [encoder setTexture:s.integral atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(s.frames + 1, 1, 1)
-                threadsPerThreadgroup:MTLSizeMake(std::min<NSUInteger>(
-                                                      s.prefixColumns.maxTotalThreadsPerThreadgroup,
-                                                      std::bit_ceil(s.rows)),
-                                                  1, 1)];
+        scan(encoder, s.prefixColumns, s.frames + 1, s.rows);
         [encoder endEncoding];
         s.ready = true;
         return true;

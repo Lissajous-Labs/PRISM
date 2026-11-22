@@ -253,13 +253,22 @@ kernel void pathBatchScan(constant BatchPath *paths [[buffer(0)]],
     if (group.x >= (path.uniforms.tileCount + scanPartition - 1) / scanPartition) {
         return;
     }
-    uint row = group.x * scanPartition + local.x;
-    if (row < path.uniforms.rows) {
-        device const int *deltas = reinterpret_cast<device const int *>(path.rowDeltas);
-        int running = 0;
-        for (uint column = 0; column < path.uniforms.columns; ++column) {
-            running += deltas[row * (path.uniforms.columns + 1) + column];
-            path.backdrops[row * path.uniforms.columns + column] = running;
+    uint groups = (path.uniforms.tileCount + scanPartition - 1) / scanPartition;
+    uint rowsPerGroup = scanPartition / simdWidth;
+    device const int *deltas = reinterpret_cast<device const int *>(path.rowDeltas);
+    for (uint row = group.x * rowsPerGroup + simdGroup; row < path.uniforms.rows;
+         row += groups * rowsPerGroup) {
+        int carry = 0;
+        for (uint base = 0; base < path.uniforms.columns; base += simdWidth) {
+            uint column = base + lane;
+            int value = column < path.uniforms.columns
+                            ? deltas[row * (path.uniforms.columns + 1) + column]
+                            : 0;
+            int prefix = simd_prefix_inclusive_sum(value);
+            if (column < path.uniforms.columns) {
+                path.backdrops[row * path.uniforms.columns + column] = carry + prefix;
+            }
+            carry += simd_sum(value);
         }
     }
     threadgroup uint partition;

@@ -4,6 +4,7 @@ struct VertexOut {
     float4 fill [[flat]];
     float4 border [[flat]];
     float4 shape [[flat]];
+    float reach [[flat]];
 };
 
 struct LcdOut {
@@ -34,7 +35,8 @@ vertex VertexOut uberVertex(uint vertexId [[vertex_id]], uint instanceId [[insta
         float2 along = mix(a - axis * reach, b + axis * reach, corner.x);
         local = along + normal * reach * (2.0f * corner.y - 1.0f);
     }
-    float2 physical = applyForward(transforms[d.transformId], local) - uniforms.origin;
+    TransformRecord t = transforms[d.transformId];
+    float2 physical = applyForward(t, local) - uniforms.origin;
     VertexOut out;
     out.position = float4(physical.x / uniforms.viewport.x * 2.0f - 1.0f,
                           1.0f - physical.y / uniforms.viewport.y * 2.0f,
@@ -44,6 +46,7 @@ vertex VertexOut uberVertex(uint vertexId [[vertex_id]], uint instanceId [[insta
     out.border = decodeColor(d.borderColor);
     out.shape =
         (d.kindFlags & kindMask) == kindArc ? arcBasis(d.params[2], d.params[3]) : float4(0.0f);
+    out.reach = coverageReach(t);
     return out;
 }
 
@@ -56,8 +59,10 @@ vertex VertexOut uberCoreVertex(uint vertexId [[vertex_id]], uint instanceId [[i
     uint index = indices[instanceId];
     PrimitiveDesc d = primitives[index];
     uint offset = d.payloadOffset;
+    TransformRecord t = transforms[d.transformId];
+    float reach = coverageReach(t);
     float inset = max(max(d.params[0], d.params[1]), max(d.params[2], d.params[3])) * 0.29289322f +
-                  1.0f + aaMargin;
+                  reach * 1.125f + aaMargin;
     float4 edges = float4(inset);
     if ((d.kindFlags & borderFlag) != 0u) {
         edges +=
@@ -66,8 +71,7 @@ vertex VertexOut uberCoreVertex(uint vertexId [[vertex_id]], uint instanceId [[i
     float2 low = float2(d.bounds[0] + edges.x, d.bounds[1] + edges.y);
     float2 high = max(float2(d.bounds[2] - edges.z, d.bounds[3] - edges.w), low);
     float2 corner = quadCorners[vertexId];
-    float2 physical =
-        applyForward(transforms[d.transformId], mix(low, high, corner)) - uniforms.origin;
+    float2 physical = applyForward(t, mix(low, high, corner)) - uniforms.origin;
     VertexOut out;
     out.position = float4(physical.x / uniforms.viewport.x * 2.0f - 1.0f,
                           1.0f - physical.y / uniforms.viewport.y * 2.0f,
@@ -76,6 +80,7 @@ vertex VertexOut uberCoreVertex(uint vertexId [[vertex_id]], uint instanceId [[i
     out.fill = decodeColor(d.color);
     out.border = decodeColor(d.borderColor);
     out.shape = float4(0.0f);
+    out.reach = reach;
     return out;
 }
 
@@ -96,7 +101,7 @@ ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives,
     PrimitiveDesc d = primitives[in.primitive];
     uint slot = d.auxHandle == noTexture ? 0u : min(d.auxHandle, 23u);
     return shadePrimitive(frame, d, gradients, textures[slot], in.position.xy + uniforms.origin,
-                          in.fill, in.border, in.shape);
+                          in.fill, in.border, in.shape, in.reach);
 }
 
 [[early_fragment_tests]] fragment float4 uberCoreFragment(VertexOut in [[stage_in]],

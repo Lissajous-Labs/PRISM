@@ -125,9 +125,7 @@ float evaluateField(int mode, PrimitiveDesc d, device const float *payload, text
 }
 
 float fieldCoverage(int mode, TransformRecord t, PrimitiveDesc d, device const float *payload,
-                    texture2d<float> strip, float2 local, float4 shape) {
-    float reach = 0.71f * fast::sqrt(t.inverse[0] * t.inverse[0] + t.inverse[1] * t.inverse[1] +
-                                     t.inverse[2] * t.inverse[2] + t.inverse[3] * t.inverse[3]);
+                    texture2d<float> strip, float2 local, float4 shape, float reach) {
     float distance;
     float2 gradient;
     RoundedShape rounded;
@@ -313,7 +311,7 @@ float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, device con
 
 ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gradients,
                         texture2d<float> texture, float2 physical, float4 fill, float4 border,
-                        float4 shape) {
+                        float4 shape, float reach) {
     ShadeOut result;
     result.color = float4(0.0f);
     result.coverage = float3(0.0f);
@@ -339,12 +337,14 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
                 : roundedBoxShadow(local - box.center, box.half_, d.params[1], d.params[0]);
         float alpha = blurred;
         if (!compactShading && (d.kindFlags & insetFlag) != 0u) {
-            alpha = fieldCoverage(fieldInsetBox, t, d, frame.payload, texture, local, shape) *
-                    (1.0f - blurred);
+            alpha =
+                fieldCoverage(fieldInsetBox, t, d, frame.payload, texture, local, shape, reach) *
+                (1.0f - blurred);
         }
         result.color = fill * alpha;
     } else if (analyticShading) {
-        float outer = fieldCoverage(fieldPrimitive, t, d, frame.payload, texture, local, shape);
+        float outer =
+            fieldCoverage(fieldPrimitive, t, d, frame.payload, texture, local, shape, reach);
         float4 color = fillColor(d, frame.payload, gradients, local, fill);
         if (fullShading && kind == kindPlot && d.params[3] > 0.0f) {
             LocalBox box = payloadBox(frame.payload, d.payloadOffset);
@@ -353,7 +353,7 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
         }
         if (kind == kindRoundedRect && (d.kindFlags & borderFlag) != 0u) {
             float inner =
-                fieldCoverage(fieldInnerBorder, t, d, frame.payload, texture, local, shape);
+                fieldCoverage(fieldInnerBorder, t, d, frame.payload, texture, local, shape, reach);
             result.color = color * (outer * inner) + border * (outer * (1.0f - inner));
         } else {
             result.color = color * outer;

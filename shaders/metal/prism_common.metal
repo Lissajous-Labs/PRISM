@@ -104,6 +104,11 @@ float2 applyForward(TransformRecord t, float2 p) {
                   t.forward[1] * p.x + t.forward[3] * p.y + t.forward[5]);
 }
 
+float coverageReach(TransformRecord t) {
+    return 0.71f * fast::sqrt(t.inverse[0] * t.inverse[0] + t.inverse[1] * t.inverse[1] +
+                              t.inverse[2] * t.inverse[2] + t.inverse[3] * t.inverse[3]);
+}
+
 float srgbDecode(float encoded) {
     float magnitude = abs(encoded);
     float linear =

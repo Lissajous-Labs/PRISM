@@ -138,6 +138,15 @@ float fieldCoverage(int mode, TransformRecord t, PrimitiveDesc d, device const f
             return distance < 0.0f ? 1.0f : 0.0f;
         }
         gradient = sdRoundedRectGradient(p, shape.half_, shape.radii);
+    } else if (mode == fieldPrimitive && (d.kindFlags & kindMask) == kindArc) {
+        ArcSample sample =
+            sampleArc(local, payloadPoint(payload, d.payloadOffset), d.params[0], d.params[1],
+                      d.params[2], d.params[3], (d.kindFlags & capMask) >> capShift);
+        distance = sample.distance;
+        if (abs(distance) >= reach) {
+            return distance < 0.0f ? 1.0f : 0.0f;
+        }
+        gradient = sample.gradient;
     } else if (fullShading && (d.kindFlags & kindMask) == kindPlot) {
         float2 band = plotBand(d, payload, strip, local);
         distance = max(band.x - local.y, local.y - band.y) - d.params[0] * 0.5f;

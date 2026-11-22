@@ -156,26 +156,51 @@ float sdBezier(float2 p, float2 p0, float2 p1, float2 p2) {
     return best;
 }
 
-float sdArc(float2 p, float2 center, float radius, float thickness, float midAngle, float halfAperture, uint cap) {
+struct ArcSample {
+    float distance;
+    float2 gradient;
+};
+
+ArcSample sampleArc(float2 p, float2 center, float radius, float thickness, float midAngle,
+                    float halfAperture, uint cap) {
     float turn = 1.5707963f - midAngle;
     float c = cos(turn);
     float s = sin(turn);
     float2 local = p - center;
-    float2 q = float2(c * local.x - s * local.y, s * local.x + c * local.y);
-    q.x = abs(q.x);
+    float foldedX = c * local.x - s * local.y;
+    float2 q = float2(abs(foldedX), s * local.x + c * local.y);
     float2 endPoint = float2(sin(halfAperture), cos(halfAperture));
     float halfWidth = thickness * 0.5f;
-    if (!(endPoint.y * q.x > endPoint.x * q.y)) {
-        return abs(length(q) - radius) - halfWidth;
+    ArcSample result;
+    if (endPoint.y * q.x <= endPoint.x * q.y) {
+        float norm = length(q);
+        float radial = norm - radius;
+        result.distance = abs(radial) - halfWidth;
+        float side = radial > 0.0f ? 1.0f : (radial < 0.0f ? -1.0f : 0.0f);
+        result.gradient = norm > 0.0f ? q * (side / norm) : float2(0.0f);
+    } else if (cap == 1u || cap == 2u) {
+        float2 frame = float2(q.x * endPoint.y - q.y * endPoint.x,
+                              q.x * endPoint.x + q.y * endPoint.y - radius);
+        float2 halfExtent = float2(cap == 1u ? 0.0f : halfWidth, halfWidth);
+        result.distance = sdRoundedRect(frame, halfExtent, float4(0.0f));
+        float2 capGradient = sdRoundedRectGradient(frame, halfExtent, float4(0.0f));
+        result.gradient = float2(endPoint.y * capGradient.x + endPoint.x * capGradient.y,
+                                 -endPoint.x * capGradient.x + endPoint.y * capGradient.y);
+    } else {
+        float2 delta = q - endPoint * radius;
+        float norm = length(delta);
+        result.distance = norm - halfWidth;
+        result.gradient = norm > 0.0f ? delta / norm : float2(0.0f);
     }
-    float2 frame = float2(q.x * endPoint.y - q.y * endPoint.x, q.x * endPoint.x + q.y * endPoint.y - radius);
-    if (cap == 1u) {
-        return sdRoundedRect(frame, float2(0.0f, halfWidth), float4(0.0f));
-    }
-    if (cap == 2u) {
-        return sdRoundedRect(frame, float2(halfWidth), float4(0.0f));
-    }
-    return length(q - endPoint * radius) - halfWidth;
+    result.gradient.x *= foldedX > 0.0f ? 1.0f : (foldedX < 0.0f ? -1.0f : 0.0f);
+    result.gradient = float2(c * result.gradient.x + s * result.gradient.y,
+                             -s * result.gradient.x + c * result.gradient.y);
+    return result;
+}
+
+float sdArc(float2 p, float2 center, float radius, float thickness, float midAngle,
+            float halfAperture, uint cap) {
+    return sampleArc(p, center, radius, thickness, midAngle, halfAperture, cap).distance;
 }
 
 float erfInterval(float center, float halfWidth, float sigma) {

@@ -20,6 +20,11 @@ struct Arc {
     ArcCap cap;
 };
 
+struct ArcSample {
+    double distance;
+    Vector2 gradient;
+};
+
 namespace detail {
 [[nodiscard]] inline Vector2 bezierPoint(Vector2 p0, Vector2 p1, Vector2 p2, double t) noexcept {
     const double s = 1 - t;
@@ -83,28 +88,42 @@ namespace detail {
     return best;
 }
 
-[[nodiscard]] inline double arc(Vector2 p, const Arc &shape) noexcept {
+[[nodiscard]] inline ArcSample sampleArc(Vector2 p, const Arc &shape) noexcept {
     const double turn = std::numbers::pi / 2 - shape.midAngle;
     const double cosine = std::cos(turn);
     const double sine = std::sin(turn);
     const Vector2 local = p - shape.center;
-    Vector2 q{cosine * local.x - sine * local.y, sine * local.x + cosine * local.y};
-    q.x = std::abs(q.x);
+    const double foldedX = cosine * local.x - sine * local.y;
+    const Vector2 q{std::abs(foldedX), sine * local.x + cosine * local.y};
     const Vector2 end{std::sin(shape.halfAperture), std::cos(shape.halfAperture)};
     const double halfWidth = shape.thickness / 2;
-    const bool beyond = end.y * q.x > end.x * q.y;
-    if (!beyond) {
-        return std::abs(length(q) - shape.radius) - halfWidth;
+    ArcSample result;
+    if (end.y * q.x <= end.x * q.y) {
+        const double norm = length(q);
+        const double radial = norm - shape.radius;
+        result.distance = std::abs(radial) - halfWidth;
+        const double side = radial > 0 ? 1 : (radial < 0 ? -1 : 0);
+        result.gradient = norm > 0 ? q * (side / norm) : Vector2{};
+    } else if (shape.cap == ArcCap::butt or shape.cap == ArcCap::square) {
+        const Vector2 frame{q.x * end.y - q.y * end.x, q.x * end.x + q.y * end.y - shape.radius};
+        const Vector2 half{shape.cap == ArcCap::butt ? 0 : halfWidth, halfWidth};
+        result.distance = box(frame, half);
+        const Vector2 capGradient = roundedRectGradient(frame, half, {});
+        result.gradient = {end.y * capGradient.x + end.x * capGradient.y,
+                           -end.x * capGradient.x + end.y * capGradient.y};
+    } else {
+        const Vector2 delta = q - end * shape.radius;
+        const double norm = length(delta);
+        result.distance = norm - halfWidth;
+        result.gradient = norm > 0 ? delta * (1 / norm) : Vector2{};
     }
-    const Vector2 capFrame{q.x * end.y - q.y * end.x, q.x * end.x + q.y * end.y - shape.radius};
-    switch (shape.cap) {
-    case ArcCap::round:
-        return length(q - end * shape.radius) - halfWidth;
-    case ArcCap::butt:
-        return box(capFrame, {0, halfWidth});
-    case ArcCap::square:
-        return box(capFrame, {halfWidth, halfWidth});
-    }
-    return length(q - end * shape.radius) - halfWidth;
+    result.gradient.x *= foldedX > 0 ? 1 : (foldedX < 0 ? -1 : 0);
+    result.gradient = {cosine * result.gradient.x + sine * result.gradient.y,
+                       -sine * result.gradient.x + cosine * result.gradient.y};
+    return result;
+}
+
+[[nodiscard]] inline double arc(Vector2 p, const Arc &shape) noexcept {
+    return sampleArc(p, shape).distance;
 }
 }

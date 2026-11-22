@@ -132,19 +132,58 @@ bool checkDegenerateCurves() {
     const Arc tiny{{0, 0}, 10, 2, 0.5, 1e-4, ArcCap::butt};
     const Arc square{{0, 0}, 10, 2, 0.5, 1, ArcCap::square};
     const Arc empty{{0, 0}, 0, 0, 0, 1, ArcCap::round};
+    const auto emptySample = sampleArc({0, 0}, empty);
     const Vector2 beyond{10 * std::cos(0.5 + 1.2), 10 * std::sin(0.5 + 1.2)};
     return std::isfinite(arc({1, 1}, tiny)) && std::isfinite(arc({1, 1}, square)) &&
-           std::isfinite(arc({0, 0}, empty)) &&
+           std::isfinite(emptySample.distance) && std::isfinite(emptySample.gradient.x) &&
+           std::isfinite(emptySample.gradient.y) &&
            arc(beyond, Arc{{0, 0}, 10, 2, 0.5, 1, ArcCap::butt}) > 0 &&
            std::isfinite(quadraticBezier({1, 1}, {0, 0}, {0, 0}, {0, 0})) &&
            std::isfinite(superellipse({0, 0}, {10, 5}, 4)) && superellipse({0, 0}, {10, 5}, 4) < 0;
+}
+
+bool checkArcGradients(prism::test::Pcg &random) {
+    double worst = 0;
+    int checked = 0;
+    for (const auto cap : {ArcCap::round, ArcCap::butt, ArcCap::square}) {
+        for (int i = 0; i < 4000; ++i) {
+            const Arc shape{{random.range(-3, 3), random.range(-3, 3)},
+                            random.range(0.25, 30),
+                            random.range(0.05, 5),
+                            random.range(-3.1, 3.1),
+                            random.range(0.02, 3.12),
+                            cap};
+            const Vector2 p{random.range(-40, 40), random.range(-40, 40)};
+            const auto numerical = [&](double step) {
+                return Vector2{
+                    (arc(p + Vector2{step, 0}, shape) - arc(p - Vector2{step, 0}, shape)) /
+                        (2 * step),
+                    (arc(p + Vector2{0, step}, shape) - arc(p - Vector2{0, step}, shape)) /
+                        (2 * step)};
+            };
+            const auto coarse = numerical(1e-4), fine = numerical(1e-5);
+            if (length(coarse - fine) > 1e-3) {
+                continue;
+            }
+            const auto sample = sampleArc(p, shape);
+            const double error = length(sample.gradient - fine);
+            if (not std::isfinite(error)) {
+                return false;
+            }
+            worst = std::max(worst, error);
+            ++checked;
+        }
+    }
+    std::cout << "Arc analytic gradient error: " << worst << " across " << checked << " samples\n";
+    return checked >= 11000 and worst < 2e-5;
 }
 }
 
 int main() {
     prism::test::Pcg random(17);
-    const bool passed = checkDegenerateCurves() && checkBeziers(random) && checkRoundArcs(random) &&
-                        checkSuperellipses(random);
+    const bool passed = checkDegenerateCurves() and checkBeziers(random) and
+                        checkRoundArcs(random) and checkSuperellipses(random) and
+                        checkArcGradients(random);
     prism::test::AllocGuard guard;
     const double guarded = quadraticBezier({1, 2}, {0, 0}, {4, 5}, {8, 0}) +
                            superellipse({3, 1}, {10, 6}, 5) +

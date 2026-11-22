@@ -268,8 +268,10 @@ ShadeResult shadePrimitive(const FrameView &frame, const PrimitiveDesc &desc, do
             desc.params[2],
             desc.params[3],
             static_cast<math::ArcCap>((desc.kindFlags & flags::capMask) >> flags::capShift)};
-        result =
-            shadeField(frame, desc, transform, local, [&](Vector2 p) { return math::arc(p, arc); });
+        const auto sample = math::sampleArc(local, arc);
+        result = solid(
+            detail::scale(fillColor(frame, desc, local),
+                          detail::gradientCoverage(transform, sample.distance, sample.gradient)));
         break;
     }
     case PrimitiveKind::lineCapsule:

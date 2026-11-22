@@ -113,6 +113,30 @@ bool checkIsolation(backends::MetalDevice &device) {
         first->rebuild() && first->render({test::viewOf(list), &damage, {0, 0, 0, 1}});
     return failed && siblingOk && recovered;
 }
+
+bool checkArcCaps(backends::MetalDevice &device) {
+    render::DrawList list;
+    const auto transform = *list.addTransform(math::Affine2D::scale(1.3, 0.7));
+    list.setTransform(transform);
+    const std::array caps{math::ArcCap::round, math::ArcCap::butt, math::ArcCap::square};
+    for (std::size_t row = 0; row < caps.size(); ++row) {
+        for (int column = 0; column < 6; ++column) {
+            list.arc({20.25 + 32 * column, 21.75 + 32 * row}, 8.25f + column * 0.125f,
+                     0.75f + row * 0.5f, column * 0.7f - 1.3f, 0.15f + column * 0.55f, caps[row],
+                     render::packColor(245, 247, 217, 220));
+        }
+    }
+    backends::CpuRefSurface reference({{320, 128}});
+    auto gpu = device.createRenderSurface({{320, 128}});
+    const auto expected = test::renderFull(reference, test::viewOf(list));
+    const auto actual = test::renderFull(*gpu, test::viewOf(list));
+    if (expected.empty() or actual.empty()) {
+        return false;
+    }
+    const auto difference = test::comparePixels(toPixels(actual), toPixels(expected));
+    std::cout << "Analytic arc cap GPU maximum error " << difference.maximumAbsolute << '\n';
+    return difference.maximumAbsolute < 2e-3;
+}
 }
 
 int main() {
@@ -123,7 +147,7 @@ int main() {
     }
     auto &device = static_cast<backends::MetalDevice &>(*created);
     if (!checkLayout(device) || !checkParity(device) || !checkPartialDamage(device) ||
-        !checkEarlyDepth(device) || !checkIsolation(device)) {
+        !checkEarlyDepth(device) || !checkIsolation(device) || !checkArcCaps(device)) {
         std::cerr << "Native GPU contract failed\n";
         return 1;
     }

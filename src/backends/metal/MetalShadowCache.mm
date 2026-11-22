@@ -22,6 +22,7 @@ float largestScale(const render::TransformRecord &t) noexcept {
 void MetalShadowCache::prepare(MetalDeviceState &device, const render::FrameView &frame,
                                id<MTLBuffer> primitives) {
     pending_.clear();
+    bool stepsReady = false;
     auto *gpuPrimitives = static_cast<render::PrimitiveDesc *>(primitives.contents);
     for (std::size_t i = 0; i < frame.primitives.size(); ++i) {
         const auto &d = frame.primitives[i];
@@ -32,11 +33,26 @@ void MetalShadowCache::prepare(MetalDeviceState &device, const render::FrameView
         const float half[2] = {(box[2] - box[0]) / 2, (box[3] - box[1]) / 2};
         const float radius = std::clamp(d.params[1], 0.0f, std::min(half[0], half[1]));
         const float sigma = d.params[0];
-        const float scale = largestScale(frame.transforms[d.transformId]);
-        if (!(sigma > 0) || !(scale > 0)) {
+        if (!(sigma > 0)) {
             continue;
         }
-        const float step = std::exp2(std::ceil(std::log2(0.5f / scale)));
+        if (!stepsReady) {
+            sampleSteps_.assign(frame.transforms.size(), -1);
+            stepsReady = true;
+        }
+        float &step = sampleSteps_[d.transformId];
+        if (step < 0) {
+            const float scale = largestScale(frame.transforms[d.transformId]);
+            step = 0;
+            if (std::isfinite(scale) && scale > 0) {
+                int exponent;
+                static_cast<void>(std::frexp(scale, &exponent));
+                step = std::ldexp(1.0f, -exponent);
+            }
+        }
+        if (!(step > 0)) {
+            continue;
+        }
         const auto found =
             std::find_if(entries_.begin(), entries_.end(), [&](const ShadowSprite &e) {
                 return e.step == step && e.half[0] == half[0] && e.half[1] == half[1] &&

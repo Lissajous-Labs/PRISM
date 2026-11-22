@@ -28,6 +28,7 @@ class MetalShadowCache {
   private:
     std::vector<ShadowSprite> entries_;
     std::vector<std::uint32_t> pending_;
+    std::vector<float> sampleSteps_;
     std::uint32_t texels_ = 0;
     id<MTLBuffer> sprites_ = nil;
     id<MTLBuffer> table_ = nil;

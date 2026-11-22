@@ -137,6 +137,37 @@ bool checkArcCaps(backends::MetalDevice &device) {
     std::cout << "Analytic arc cap GPU maximum error " << difference.maximumAbsolute << '\n';
     return difference.maximumAbsolute < 2e-3;
 }
+
+bool checkShadowScaleChanges(backends::MetalDevice &device) {
+    backends::CpuRefSurface reference({{256, 192}});
+    auto gpu = device.createRenderSurface({{256, 192}});
+    render::DrawList list;
+    const std::array<double, 8> scales{
+        2, 0.5, 4, 0.75, std::nextafter(2.0f, 0.0f), std::nextafter(2.0f, 3.0f), 1, 2};
+    for (const double scale : scales) {
+        list.clear();
+        const auto first = *list.addTransform(math::Affine2D::scale(scale, 0.75 * scale));
+        const auto second = *list.addTransform(math::Affine2D::scale(0.5 * scale, scale));
+        for (int i = 0; i < 4; ++i) {
+            list.setTransform(i % 2 == 0 ? first : second);
+            const float x = 5.25f + 18 * i, y = 10.75f + 8 * i;
+            list.boxShadow({x, y, x + 20, y + 20}, 3, 4, render::packColor(245, 247, 217, 200));
+        }
+        const math::PremultipliedColor clear{0.1, 0.2, 0.3, 0.6};
+        const auto expected = test::renderFull(reference, test::viewOf(list), clear);
+        const auto actual = test::renderFull(*gpu, test::viewOf(list), clear);
+        if (expected.empty() or actual.empty()) {
+            return false;
+        }
+        const auto difference = test::comparePixels(toPixels(actual), toPixels(expected));
+        if (difference.psnr < 52) {
+            std::cerr << "Shadow transform cache mismatch at scale " << scale << ": PSNR "
+                      << difference.psnr << '\n';
+            return false;
+        }
+    }
+    return true;
+}
 }
 
 int main() {
@@ -147,7 +178,8 @@ int main() {
     }
     auto &device = static_cast<backends::MetalDevice &>(*created);
     if (!checkLayout(device) || !checkParity(device) || !checkPartialDamage(device) ||
-        !checkEarlyDepth(device) || !checkIsolation(device) || !checkArcCaps(device)) {
+        !checkEarlyDepth(device) || !checkIsolation(device) || !checkArcCaps(device) ||
+        !checkShadowScaleChanges(device)) {
         std::cerr << "Native GPU contract failed\n";
         return 1;
     }

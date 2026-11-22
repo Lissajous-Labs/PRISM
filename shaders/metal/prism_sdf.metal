@@ -21,6 +21,23 @@ float sdSegment(float2 p, float2 a, float2 b) {
     return length(p - (a + edge * t));
 }
 
+struct FieldSample {
+    float distance;
+    float2 gradient;
+};
+
+FieldSample sampleCapsule(float2 p, float2 a, float2 b, float radius) {
+    float2 edge = b - a;
+    float lengthSquared = dot(edge, edge);
+    float t = lengthSquared > 0.0f ? clamp(dot(p - a, edge) / lengthSquared, 0.0f, 1.0f) : 0.0f;
+    float2 delta = p - (a + edge * t);
+    float norm = fast::length(delta);
+    FieldSample result;
+    result.distance = norm - radius;
+    result.gradient = norm > 0.0f ? delta * fast::divide(1.0f, norm) : float2(0.0f);
+    return result;
+}
+
 float crossProduct(float2 a, float2 b) {
     return a.x * b.y - a.y * b.x;
 }

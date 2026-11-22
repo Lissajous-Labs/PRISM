@@ -146,6 +146,14 @@ float fieldCoverage(int mode, TransformRecord t, PrimitiveDesc d, device const f
             return distance < 0.0f ? 1.0f : 0.0f;
         }
         gradient = sample.gradient;
+    } else if (mode == fieldPrimitive && (d.kindFlags & kindMask) == kindCapsule) {
+        FieldSample sample = sampleCapsule(local, payloadPoint(payload, d.payloadOffset),
+                                           payloadPoint(payload, d.payloadOffset + 2), d.params[0]);
+        distance = sample.distance;
+        if (abs(distance) >= reach) {
+            return distance < 0.0f ? 1.0f : 0.0f;
+        }
+        gradient = sample.gradient;
     } else if (fullShading && (d.kindFlags & kindMask) == kindPlot) {
         float2 band = plotBand(d, payload, strip, local);
         distance = max(band.x - local.y, local.y - band.y) - d.params[0] * 0.5f;

@@ -68,7 +68,8 @@ constant uint noTexture = 0xFFFFFFFFu;
 constant float gradientStep = 1.0f / 64.0f;
 constant float aaMargin = 1.5f;
 constant uint shadingClassConstant [[function_constant(0)]];
-constant uint shadingClass = is_function_constant_defined(shadingClassConstant) ? shadingClassConstant : 0u;
+constant uint shadingClass =
+    is_function_constant_defined(shadingClassConstant) ? shadingClassConstant : 0u;
 constant bool fullShading = shadingClass == 0u;
 constant bool analyticShading = shadingClass != 2u;
 constant bool texturedShading = shadingClass != 1u;
@@ -104,7 +105,8 @@ float2 applyForward(TransformRecord t, float2 p) {
 
 float srgbDecode(float encoded) {
     float magnitude = abs(encoded);
-    float linear = magnitude <= 0.04045f ? magnitude / 12.92f : pow((magnitude + 0.055f) / 1.055f, 2.4f);
+    float linear =
+        magnitude <= 0.04045f ? magnitude / 12.92f : pow((magnitude + 0.055f) / 1.055f, 2.4f);
     return copysign(linear, encoded);
 }
 
@@ -113,6 +115,15 @@ float4 decodeColor(uint packed) {
     return float4(srgbDecode(float(packed & 0xFFu) / 255.0f) * alpha,
                   srgbDecode(float((packed >> 8) & 0xFFu) / 255.0f) * alpha,
                   srgbDecode(float((packed >> 16) & 0xFFu) / 255.0f) * alpha, alpha);
+}
+
+float4 outputColor(float4 color, uint colorSpace) {
+    if (colorSpace == 0u) {
+        return color;
+    }
+    return float4(dot(color.rgb, float3(0.82246197f, 0.17753803f, 0.0f)),
+                  dot(color.rgb, float3(0.03319420f, 0.96680580f, 0.0f)),
+                  dot(color.rgb, float3(0.01708263f, 0.07239744f, 0.91051993f)), color.a);
 }
 
 float boxCoverage(float distance, float2 normal) {
@@ -137,6 +148,9 @@ float boxCoverage(float distance, float2 normal) {
 float erfApprox(float x) {
     float magnitude = abs(x);
     float t = 1.0f / (1.0f + 0.3275911f * magnitude);
-    float polynomial = ((((1.061405429f * t - 1.453152027f) * t + 1.421413741f) * t - 0.284496736f) * t + 0.254829592f) * t;
+    float polynomial =
+        ((((1.061405429f * t - 1.453152027f) * t + 1.421413741f) * t - 0.284496736f) * t +
+         0.254829592f) *
+        t;
     return copysign(1.0f - polynomial * exp(-magnitude * magnitude), x);
 }

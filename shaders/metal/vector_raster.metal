@@ -30,12 +30,11 @@ struct BatchPath {
     ulong reserved;
 };
 
-uint quantizeLocal(float value) {
-    return uint(rint(clamp(value, 0.0f, pathTile) * pieceScale));
-}
+uint quantizeLocal(float value) { return uint(rint(clamp(value, 0.0f, pathTile) * pieceScale)); }
 
 uint2 packPiece(float x0, float y0, float x1, float y1) {
-    return uint2(quantizeLocal(x0) | (quantizeLocal(y0) << 16), quantizeLocal(x1) | (quantizeLocal(y1) << 16));
+    return uint2(quantizeLocal(x0) | (quantizeLocal(y0) << 16),
+                 quantizeLocal(x1) | (quantizeLocal(y1) << 16));
 }
 
 struct PieceSink {
@@ -85,7 +84,8 @@ void visitTilePieces(float4 s, constant PathUniforms &u, thread PieceSink &sink)
         int columnLast = xHigh > xLow ? int(ceil(xHigh / pathTile)) - 1 : columnFirst;
         float dx = endX - startX;
         float dy = endY - startY;
-        for (int column = max(columnFirst, 0); column <= min(columnLast, int(u.columns) - 1); ++column) {
+        for (int column = max(columnFirst, 0); column <= min(columnLast, int(u.columns) - 1);
+             ++column) {
             float left = float(column) * pathTile;
             float t0 = 0.0f;
             float t1 = 1.0f;
@@ -99,8 +99,8 @@ void visitTilePieces(float4 s, constant PathUniforms &u, thread PieceSink &sink)
                 continue;
             }
             sink.emit(uint(column), uint(row), u.columns,
-                      packPiece(startX + dx * t0 - left, startY + dy * t0 - bandTop, startX + dx * t1 - left,
-                                startY + dy * t1 - bandTop));
+                      packPiece(startX + dx * t0 - left, startY + dy * t0 - bandTop,
+                                startX + dx * t1 - left, startY + dy * t1 - bandTop));
         }
     }
 }
@@ -127,7 +127,8 @@ void visitBoundarySteps(float4 s, constant PathUniforms &u, thread PieceSink &si
             continue;
         }
         sink.emit(uint(column), uint(row), u.columns,
-                  s.z > s.x ? packPiece(0.0f, pathTile, 0.0f, local) : packPiece(0.0f, local, 0.0f, pathTile));
+                  s.z > s.x ? packPiece(0.0f, pathTile, 0.0f, local)
+                            : packPiece(0.0f, local, 0.0f, pathTile));
     }
 }
 
@@ -163,8 +164,9 @@ kernel void pathBinCount(constant BatchPath *paths [[buffer(0)]],
         if (column >= int(u.columns)) {
             continue;
         }
-        atomic_fetch_add_explicit(&rowDeltas[uint(row) * (u.columns + 1) + uint(max(column, -1) + 1)], sign,
-                                  memory_order_relaxed);
+        atomic_fetch_add_explicit(
+            &rowDeltas[uint(row) * (u.columns + 1) + uint(max(column, -1) + 1)], sign,
+            memory_order_relaxed);
     }
 }
 
@@ -194,8 +196,7 @@ void scanPath(device const uint *counts, device uint *offsets, constant PathUnif
         for (uint group = 0; group < scanPartition / simdWidth; ++group) {
             aggregate += sums[group];
         }
-        atomic_store_explicit(&state[partition + 1], (aggregate << 2) | 1u,
-                              memory_order_relaxed);
+        atomic_store_explicit(&state[partition + 1], (aggregate << 2) | 1u, memory_order_relaxed);
 
         uint carry = 0;
         uint previous = partition;
@@ -230,7 +231,8 @@ void scanPath(device const uint *counts, device uint *offsets, constant PathUnif
 }
 
 kernel void pathScan(device const uint *counts [[buffer(0)]], device uint *offsets [[buffer(1)]],
-                     constant PathUniforms &u [[buffer(2)]], device atomic_uint *state [[buffer(3)]],
+                     constant PathUniforms &u [[buffer(2)]],
+                     device atomic_uint *state [[buffer(3)]],
                      uint local [[thread_position_in_threadgroup]],
                      uint lane [[thread_index_in_simdgroup]],
                      uint simdGroup [[simdgroup_index_in_threadgroup]],
@@ -266,7 +268,6 @@ kernel void pathBatchScan(constant BatchPath *paths [[buffer(0)]],
     scanPath(reinterpret_cast<device const uint *>(path.counts), path.offsets, path.uniforms,
              path.scanState, local.x, lane, simdGroup, simdWidth, partition, sums, prefix);
 }
-
 
 kernel void pathScatter(constant BatchPath *paths [[buffer(0)]],
                         uint2 position [[thread_position_in_grid]]) {
@@ -313,8 +314,9 @@ int fixedContribution(uint2 packed, uint column, uint row) {
     float xa = x0 + (ya - y0) * slope - float(column);
     float xb = x0 + (yb - y0) * slope - float(column);
     float dy = (yb - ya) * (y1 > y0 ? 1.0f : -1.0f);
-    float average = abs(xb - xa) > 1e-5f ? (coverageAntiderivative(xb) - coverageAntiderivative(xa)) / (xb - xa)
-                                         : coverageWeight(0.5f * (xa + xb));
+    float average = abs(xb - xa) > 1e-5f
+                        ? (coverageAntiderivative(xb) - coverageAntiderivative(xa)) / (xb - xa)
+                        : coverageWeight(0.5f * (xa + xb));
     return int(rint(dy * average * windingScale));
 }
 
@@ -372,18 +374,21 @@ vertex PathCompositeOut pathCompositeVertex(uint vertexId [[vertex_id]],
                                             constant BatchPath *paths [[buffer(0)]],
                                             constant FrameUniforms &frame [[buffer(4)]]) {
     constant PathUniforms &u = paths[instanceId].uniforms;
-    float2 point = (float2(u.origin.xy) +
-                    quadCorners[vertexId] * float2(u.columns, u.rows)) * 16.0f - frame.origin;
+    float2 point =
+        (float2(u.origin.xy) + quadCorners[vertexId] * float2(u.columns, u.rows)) * 16.0f -
+        frame.origin;
     PathCompositeOut out;
     out.position = float4(point.x / frame.viewport.x * 2.0f - 1.0f,
-                           1.0f - point.y / frame.viewport.y * 2.0f, u.depth, 1.0f);
+                          1.0f - point.y / frame.viewport.y * 2.0f, u.depth, 1.0f);
     out.path = instanceId;
     return out;
 }
 
-[[early_fragment_tests]] fragment float4 pathCompositeFragment(
-    PathCompositeOut in [[stage_in]], constant BatchPath *paths [[buffer(0)]],
-    constant FrameUniforms &frame [[buffer(4)]]) {
+[[early_fragment_tests]] fragment float4 pathCompositeFragment(PathCompositeOut in [[stage_in]],
+                                                               constant BatchPath *paths
+                                                               [[buffer(0)]],
+                                                               constant FrameUniforms &frame
+                                                               [[buffer(4)]]) {
     constant BatchPath &path = paths[in.path];
     uint2 local = uint2(in.position.xy + frame.origin) - uint2(path.uniforms.origin.xy) * 16u;
     float coverage = float(path.coverage[local.y * path.uniforms.columns * 16u + local.x]);

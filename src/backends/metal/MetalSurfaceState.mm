@@ -392,16 +392,16 @@ void MetalSurfaceState::drawOrdered(id<MTLRenderCommandEncoder> encoder, std::ui
     }
 }
 
-void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
-                                    const render::FrameRequest &request) {
+id<CAMetalDrawable> MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
+                                                   const render::FrameRequest &request,
+                                                   CAMetalLayer *layer) {
     const auto primitiveCount = static_cast<std::uint32_t>(request.view.primitives.size());
-    const FrameUniforms uniforms{
-        {static_cast<float>(extent.width), static_cast<float>(extent.height)},
-        primitiveCount,
-        static_cast<std::uint32_t>(request.view.textures.size()),
-        counting ? 1u : 0u,
-        0,
-        {0, 0}};
+    FrameUniforms uniforms{{static_cast<float>(extent.width), static_cast<float>(extent.height)},
+                           primitiveCount,
+                           static_cast<std::uint32_t>(request.view.textures.size()),
+                           0,
+                           0,
+                           {0, 0}};
     for (auto *spectrogram : device->spectrograms) {
         const auto field = spectrogram->field().nativeTexture;
         const auto integral = spectrogram->integral().nativeTexture;
@@ -417,16 +417,8 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
     halftones.encode(*device, commands, primitives, payload, gradients, textures);
     shadows.encode(*device, commands);
     paths.prepare(*device, commands, request.view, extent, transforms, clips);
-    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
-    pass.colorAttachments[0].texture = color;
-    pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
-    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    pass.depthAttachment.texture = depth;
-    pass.depthAttachment.loadAction = MTLLoadActionLoad;
-    pass.depthAttachment.storeAction = MTLStoreActionStore;
-    const float clear[4] = {
-        static_cast<float>(request.clear.r), static_cast<float>(request.clear.g),
-        static_cast<float>(request.clear.b), static_cast<float>(request.clear.a)};
+    float clear[4] = {static_cast<float>(request.clear.r), static_cast<float>(request.clear.g),
+                      static_cast<float>(request.clear.b), static_cast<float>(request.clear.a)};
     const hal::Rect viewport{0, 0, static_cast<std::int32_t>(extent.width),
                              static_cast<std::int32_t>(extent.height)};
     const auto &view = request.view;
@@ -443,6 +435,35 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
         });
     }
     recoverDamage = false;
+    id<CAMetalDrawable> drawable = nil;
+    const bool fullRequest =
+        request.damage->bounds() == viewport &&
+        request.damage->area() == static_cast<std::int64_t>(extent.width) * extent.height;
+    if (layer != nil && fullRequest && directCompatible && view.effects.empty() &&
+        request.bloom == nullptr) {
+        if (layer.device != device->device) {
+            layer.device = device->device;
+        }
+        const CGSize size = CGSizeMake(extent.width, extent.height);
+        if (!CGSizeEqualToSize(layer.drawableSize, size)) {
+            layer.drawableSize = size;
+        }
+        drawable = [layer nextDrawable];
+    }
+    if (drawable != nil) {
+        uniforms.outputColorSpace = 1;
+        const auto p3 = math::toDisplayP3({clear[0], clear[1], clear[2]});
+        clear[0] = static_cast<float>(p3.r);
+        clear[1] = static_cast<float>(p3.g);
+        clear[2] = static_cast<float>(p3.b);
+    }
+    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = drawable != nil ? drawable.texture : color;
+    pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    pass.depthAttachment.texture = depth;
+    pass.depthAttachment.loadAction = MTLLoadActionLoad;
+    pass.depthAttachment.storeAction = MTLStoreActionStore;
     const auto scissor = [](id<MTLRenderCommandEncoder> encoder, hal::Rect rect) {
         [encoder setScissorRect:MTLScissorRect{static_cast<NSUInteger>(rect.x0),
                                                static_cast<NSUInteger>(rect.y0),

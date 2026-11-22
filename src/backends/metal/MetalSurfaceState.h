@@ -22,7 +22,7 @@ struct FrameUniforms {
     float viewport[2];
     std::uint32_t maxDepth;
     std::uint32_t textureCount;
-    std::uint32_t countFragments;
+    std::uint32_t outputColorSpace;
     std::uint32_t indexed;
     float origin[2];
 };
@@ -102,7 +102,8 @@ struct MetalSurfaceState : MetalFrameResources {
     [[nodiscard]] id<MTLTexture> presentedTexture() const noexcept {
         return bloomActive ? output : color;
     }
-    void encodeFrame(id<MTLCommandBuffer> commands, const render::FrameRequest &request);
+    id<CAMetalDrawable> encodeFrame(id<MTLCommandBuffer> commands,
+                                    const render::FrameRequest &request, CAMetalLayer *layer);
 
   private:
     void bindUber(id<MTLRenderCommandEncoder> encoder, const FrameUniforms &uniforms);

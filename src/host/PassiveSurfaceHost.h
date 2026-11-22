@@ -32,7 +32,7 @@ class PassiveSurfaceHost {
     [[nodiscard]] double contentsScale() const noexcept;
     [[nodiscard]] hal::Extent drawableExtent() const noexcept;
     [[nodiscard]] void *nativeView() const noexcept;
-    [[nodiscard]] bool present(render::RenderSurface &surface, std::uint32_t frame);
+    [[nodiscard]] bool present(render::RenderSurface &surface);
 
   private:
     struct Impl;

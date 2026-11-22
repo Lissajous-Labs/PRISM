@@ -158,28 +158,32 @@ bool MetalSurface::readbackPresented(std::span<std::uint8_t> rgba, std::uint32_t
     return true;
 }
 
-bool MetalSurface::presentToLayer(void *layer, std::uint32_t frame) {
+bool MetalSurface::presentToLayer(void *layer) {
     if (state_->lost || layer == nullptr) {
         return false;
     }
     @autoreleasepool {
         CAMetalLayer *target = (__bridge CAMetalLayer *)layer;
-        target.device = state_->device->device;
-        target.pixelFormat = MTLPixelFormatBGRA8Unorm;
-        target.framebufferOnly = NO;
-        target.drawableSize = CGSizeMake(state_->extent.width, state_->extent.height);
+        if (target.device != state_->device->device) {
+            target.device = state_->device->device;
+        }
+        const CGSize size = CGSizeMake(state_->extent.width, state_->extent.height);
+        if (!CGSizeEqualToSize(target.drawableSize, size)) {
+            target.drawableSize = size;
+        }
         id<CAMetalDrawable> drawable = [target nextDrawable];
         if (drawable == nil) {
             return false;
         }
         id<MTLCommandBuffer> commands = [state_->queue commandBuffer];
-        id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
-        [encoder setComputePipelineState:state_->device->presentDrawable];
-        [encoder setTexture:state_->presentedTexture() atIndex:0];
-        [encoder setTexture:drawable.texture atIndex:1];
-        [encoder setBytes:&frame length:sizeof(frame) atIndex:0];
-        [encoder dispatchThreads:MTLSizeMake(drawable.texture.width, drawable.texture.height, 1)
-            threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+        MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+        pass.colorAttachments[0].texture = drawable.texture;
+        pass.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+        pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+        id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
+        [encoder setRenderPipelineState:state_->device->presentDrawable];
+        [encoder setFragmentTexture:state_->presentedTexture() atIndex:0];
+        [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
         [encoder endEncoding];
         if (target.presentsWithTransaction) {
             [commands commit];

@@ -3,6 +3,7 @@
 #include "host/HostComponent.h"
 
 #import <AppKit/AppKit.h>
+#import <QuartzCore/CAMetalLayer.h>
 
 #include <iostream>
 
@@ -93,6 +94,12 @@ int main() {
             ok = component.attachToPeer((__bridge void *)peer, {0, 0, 400, 300}) &&
                  peer.subviews.count == 1;
             NSView *passive = (__bridge NSView *)component.surfaceHost().nativeView();
+            CAMetalLayer *layer = (CAMetalLayer *)passive.layer;
+            ok = ok && layer.framebufferOnly && layer.displaySyncEnabled &&
+                 layer.maximumDrawableCount == 3 &&
+                 layer.pixelFormat == MTLPixelFormatRGBA16Float &&
+                 CFEqual(CGColorSpaceGetName(layer.colorspace),
+                         kCGColorSpaceExtendedLinearDisplayP3);
             [window makeFirstResponder:passive];
             const bool refusedFocus =
                 window.firstResponder != passive && ![passive acceptsFirstResponder];

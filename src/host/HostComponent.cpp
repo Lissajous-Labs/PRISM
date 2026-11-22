@@ -91,8 +91,7 @@ bool HostComponent::renderFrame(const render::FrameView &view, const hal::Damage
         return false;
     }
     fullRedraw_ = false;
-    ++frame_;
-    if (surfaceHost_.attached() && surfaceHost_.present(*surface_, frame_)) {
+    if (surfaceHost_.attached() && surfaceHost_.present(*surface_)) {
         ++presented_;
     }
     return true;

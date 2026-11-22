@@ -30,15 +30,14 @@ kernel void presentDither(texture2d<float, access::read> source [[texture(0)]], 
     output[pixel.y * width + pixel.x] = uchar4(uchar(levels.r), uchar(levels.g), uchar(levels.b), uchar(alpha));
 }
 
-kernel void presentDrawable(texture2d<float, access::read> source [[texture(0)]],
-                            texture2d<float, access::write> target [[texture(1)]], constant uint &frame [[buffer(0)]],
-                            uint2 pixel [[thread_position_in_grid]]) {
-    if (pixel.x >= target.get_width() || pixel.y >= target.get_height()) {
-        return;
-    }
-    uint2 sourcePixel = min(pixel, uint2(source.get_width() - 1, source.get_height() - 1));
-    float4 color = source.read(sourcePixel);
-    float noise = triangularNoise(presentNoise(pixel, frame));
-    float3 levels = clamp(floor(float3(srgbEncode(color.r), srgbEncode(color.g), srgbEncode(color.b)) * 255.0f + 0.5f + noise), 0.0f, 255.0f);
-    target.write(float4(levels / 255.0f, clamp(color.a, 0.0f, 1.0f)), pixel);
+fragment float4 presentDrawableFragment(ClearOut in [[stage_in]],
+                                       texture2d<float, access::read> source [[texture(0)]]) {
+    uint2 pixel = min(uint2(in.position.xy),
+                      uint2(source.get_width() - 1, source.get_height() - 1));
+    float4 color = source.read(pixel);
+    float3 p3 = float3(
+        dot(color.rgb, float3(0.82246197f, 0.17753803f, 0.0f)),
+        dot(color.rgb, float3(0.03319420f, 0.96680580f, 0.0f)),
+        dot(color.rgb, float3(0.01708263f, 0.07239744f, 0.91051993f)));
+    return float4(p3, color.a);
 }

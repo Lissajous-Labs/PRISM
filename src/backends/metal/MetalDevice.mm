@@ -149,7 +149,12 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
         return [state->device newComputePipelineStateWithFunction:function(state->library, name)
                                                             error:nil];
     };
-    state->presentDrawable = compute("presentDrawable");
+    MTLRenderPipelineDescriptor *presentation = [MTLRenderPipelineDescriptor new];
+    presentation.vertexFunction = function(state->library, "clearVertex");
+    presentation.fragmentFunction = function(state->library, "presentDrawableFragment");
+    presentation.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA16Float;
+    state->presentDrawable = [state->device newRenderPipelineStateWithDescriptor:presentation
+                                                                           error:&error];
     state->pathBinCount = compute("pathBinCount");
     state->pathScan = compute("pathScan");
     state->pathBackdrop = compute("pathBackdrop");
@@ -180,7 +185,7 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
                            bytesPerRow:16];
     if (!state->opaque || !state->counting || !state->countingCore || !state->clear ||
         !state->reflect || !state->formantColumns || !state->halftoneCells ||
-        !state->shadowSprites) {
+        !state->shadowSprites || !state->presentDrawable) {
         return nullptr;
     }
     return state;

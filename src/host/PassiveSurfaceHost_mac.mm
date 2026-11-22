@@ -24,8 +24,13 @@
 
 - (CALayer *)makeBackingLayer {
     CAMetalLayer *layer = [CAMetalLayer layer];
-    layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-    layer.framebufferOnly = NO;
+    layer.pixelFormat = MTLPixelFormatRGBA16Float;
+    layer.framebufferOnly = YES;
+    layer.displaySyncEnabled = YES;
+    layer.maximumDrawableCount = 3;
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearDisplayP3);
+    layer.colorspace = colorSpace;
+    CGColorSpaceRelease(colorSpace);
     layer.opaque = NO;
     return layer;
 }
@@ -151,11 +156,11 @@ hal::Extent PassiveSurfaceHost::drawableExtent() const noexcept {
 
 void *PassiveSurfaceHost::nativeView() const noexcept { return (__bridge void *)impl_->view; }
 
-bool PassiveSurfaceHost::present(render::RenderSurface &surface, std::uint32_t frame) {
+bool PassiveSurfaceHost::present(render::RenderSurface &surface) {
     auto *metal = dynamic_cast<backends::MetalSurface *>(&surface);
     if (impl_->view == nil || metal == nullptr) {
         return false;
     }
-    return metal->presentToLayer((__bridge void *)impl_->view.layer, frame);
+    return metal->presentToLayer((__bridge void *)impl_->view.layer);
 }
 }

@@ -35,7 +35,6 @@ class HostComponent {
     SurfaceLifecycle lifecycle_;
     PassiveSurfaceHost surfaceHost_;
     std::unique_ptr<render::RenderSurface> surface_;
-    std::uint32_t frame_ = 0;
     std::uint32_t presented_ = 0;
     std::uint32_t drains_ = 0;
     bool fullRedraw_ = true;

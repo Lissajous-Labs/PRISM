@@ -110,6 +110,28 @@ void MetalSurfaceState::encodeScratch(id<MTLCommandBuffer> commands, FrameUnifor
     uniforms.viewport[1] = static_cast<float>(scratchColor.height);
     uniforms.indexed = 1;
     const auto *descriptors = static_cast<const render::PrimitiveDesc *>(primitives.contents);
+    const auto *frameTransforms = static_cast<const render::TransformRecord *>(transforms.contents);
+    primitiveBounds.resize(uniforms.maxDepth);
+    for (std::size_t i = 0; i < primitiveBounds.size(); ++i) {
+        const auto &d = descriptors[i];
+        const auto &t = frameTransforms[d.transformId];
+        float x0 = INFINITY, y0 = INFINITY, x1 = -INFINITY, y1 = -INFINITY;
+        for (const float x : {d.bounds[0], d.bounds[2]}) {
+            for (const float y : {d.bounds[1], d.bounds[3]}) {
+                const float px = t.forward[0] * x + t.forward[2] * y + t.forward[4];
+                const float py = t.forward[1] * x + t.forward[3] * y + t.forward[5];
+                x0 = std::min(x0, px);
+                y0 = std::min(y0, py);
+                x1 = std::max(x1, px);
+                y1 = std::max(y1, py);
+            }
+        }
+        primitiveBounds[i] = {static_cast<std::int32_t>(std::floor(x0)) - 1,
+                              static_cast<std::int32_t>(std::floor(y0)) - 1,
+                              static_cast<std::int32_t>(std::ceil(x1)) + 1,
+                              static_cast<std::int32_t>(std::ceil(y1)) + 1};
+    }
+
     const auto overlaps = [&](std::uint32_t index, const hal::Rect &rect) {
         const hal::Rect &b = primitiveBounds[index];
         return b.x0 < rect.x1 && b.x1 > rect.x0 && b.y0 < rect.y1 && b.y1 > rect.y0;
@@ -238,31 +260,6 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
                   view.transforms.size_bytes() + view.clips.size_bytes() + opaque.size_bytes() +
                   view.gradientRows.size() * 2;
     drawCalls = 0;
-    directCompatible = true;
-    primitiveBounds.resize(view.primitives.size());
-    for (std::size_t i = 0; i < view.primitives.size(); ++i) {
-        const auto &d = view.primitives[i];
-        directCompatible = directCompatible && (device->programmableBlending ||
-                                                (d.kind() != render::PrimitiveKind::glyphLcd &&
-                                                 d.blend() != hal::BlendMode::screen &&
-                                                 d.blend() != hal::BlendMode::multiply));
-        const auto &t = view.transforms[d.transformId];
-        float x0 = INFINITY, y0 = INFINITY, x1 = -INFINITY, y1 = -INFINITY;
-        for (const float x : {d.bounds[0], d.bounds[2]}) {
-            for (const float y : {d.bounds[1], d.bounds[3]}) {
-                const float px = t.forward[0] * x + t.forward[2] * y + t.forward[4];
-                const float py = t.forward[1] * x + t.forward[3] * y + t.forward[5];
-                x0 = std::min(x0, px);
-                y0 = std::min(y0, py);
-                x1 = std::max(x1, px);
-                y1 = std::max(y1, py);
-            }
-        }
-        primitiveBounds[i] = {static_cast<std::int32_t>(std::floor(x0)) - 1,
-                              static_cast<std::int32_t>(std::floor(y0)) - 1,
-                              static_cast<std::int32_t>(std::ceil(x1)) + 1,
-                              static_cast<std::int32_t>(std::ceil(y1)) + 1};
-    }
     const auto rows =
         static_cast<std::uint32_t>(view.gradientRows.size() / (render::gradientRowTexels * 4));
     gradients = rows ? uploadTexture(gpu, gradients, render::gradientRowTexels, rows, 4,
@@ -439,8 +436,12 @@ id<CAMetalDrawable> MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands
     const bool fullRequest =
         request.damage->bounds() == viewport &&
         request.damage->area() == static_cast<std::int64_t>(extent.width) * extent.height;
-    if (layer != nil && fullRequest && directCompatible && view.effects.empty() &&
-        request.bloom == nullptr) {
+    if (layer != nil && fullRequest && view.effects.empty() && request.bloom == nullptr &&
+        (device->programmableBlending ||
+         std::ranges::none_of(view.primitives, [](const render::PrimitiveDesc &d) {
+             return d.kind() == render::PrimitiveKind::glyphLcd ||
+                    d.blend() == hal::BlendMode::screen || d.blend() == hal::BlendMode::multiply;
+         }))) {
         if (layer.device != device->device) {
             layer.device = device->device;
         }

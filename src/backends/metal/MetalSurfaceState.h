@@ -92,7 +92,6 @@ struct MetalSurfaceState : MetalFrameResources {
     std::uint32_t drawCalls = 0;
     std::size_t uploadBytes = 0;
     bool submitted = false;
-    bool directCompatible = false;
     bool backingValid = false;
 
     void createTargets();

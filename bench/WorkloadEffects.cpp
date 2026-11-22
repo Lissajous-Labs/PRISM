@@ -38,10 +38,13 @@ int runEffects() {
     render::DrawList list;
     const hal::DamageRegion damage({0, 0, 3840, 2160});
     const render::BloomSettings bloom{0.9f, 0.4f, 0.6f, 5, true};
-    telemetry::FrameStatistics gpu(256);
+    constexpr int warmupFrames = 10;
+    constexpr int timedFrames = 300;
+    constexpr int readbackFrames = 8;
+    telemetry::FrameStatistics gpu(timedFrames);
     std::vector<float> pixels(static_cast<std::size_t>(ultra.width) * ultra.height * 4);
     std::vector<double> energies;
-    for (int frame = 0; frame < 120; ++frame) {
+    for (int frame = 0; frame < warmupFrames + timedFrames + readbackFrames; ++frame) {
         buildScene(list, frame);
         const render::FrameView view{
             list.primitives(), list.payload(),      list.transforms(), list.clips(), {}, {},
@@ -49,10 +52,11 @@ int runEffects() {
         if (!context->surface->render({view, &damage, {0, 0, 0, 1}, &bloom})) {
             return 1;
         }
-        if (frame >= 10) {
+        context->surface->waitIdle();
+        if (frame >= warmupFrames && frame < warmupFrames + timedFrames) {
             gpu.add(context->metal().lastGpuMilliseconds());
         }
-        if (frame >= 100 && frame < 108 && context->surface->readback(pixels)) {
+        if (frame >= warmupFrames + timedFrames && context->surface->readback(pixels)) {
             double energy = 0;
             for (std::size_t y = 1700; y < 2100; ++y) {
                 for (std::size_t x = 0; x < ultra.width; ++x) {
@@ -70,6 +74,7 @@ int runEffects() {
     }
     Report report("W5");
     report.distribution("GPU ms", gpu);
+    report.below("GPU Q99 ms", gpu.quantile(0.99), 4.5);
     report.below("bloom shimmer under one-pixel motion", (high - low) / high, 0.01);
     return report.finish();
 }

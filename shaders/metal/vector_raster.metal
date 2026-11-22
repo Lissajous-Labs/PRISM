@@ -150,27 +150,69 @@ kernel void pathBinCount(device const float4 *segments [[buffer(0)]], constant P
 }
 
 kernel void pathScan(device const uint *counts [[buffer(0)]], device uint *offsets [[buffer(1)]],
-                     constant PathUniforms &u [[buffer(2)]], uint local [[thread_position_in_threadgroup]]) {
-    threadgroup uint values[scanPartition];
-    uint carry = 0;
+                     constant PathUniforms &u [[buffer(2)]], device atomic_uint *state [[buffer(3)]],
+                     uint local [[thread_position_in_threadgroup]],
+                     uint lane [[thread_index_in_simdgroup]],
+                     uint simdGroup [[simdgroup_index_in_threadgroup]],
+                     uint simdWidth [[threads_per_simdgroup]]) {
+    threadgroup uint partition;
+    threadgroup uint sums[scanPartition];
+    threadgroup uint prefix;
     if (local == 0) {
-        offsets[0] = 0;
+        partition = atomic_fetch_add_explicit(&state[0], 1u, memory_order_relaxed);
     }
-    for (uint base = 0; base < u.tileCount; base += scanPartition) {
-        uint index = base + local;
-        values[local] = index < u.tileCount ? counts[index] : 0u;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        for (uint stride = 1; stride < scanPartition; stride <<= 1) {
-            uint addend = local >= stride ? values[local - stride] : 0u;
-            threadgroup_barrier(mem_flags::mem_threadgroup);
-            values[local] += addend;
-            threadgroup_barrier(mem_flags::mem_threadgroup);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    uint index = partition * scanPartition + local;
+    uint value = index < u.tileCount ? counts[index] : 0u;
+    uint exclusive = simd_prefix_exclusive_sum(value);
+    uint total = simd_sum(value);
+    if (lane == 0) {
+        sums[simdGroup] = total;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    uint before = 0;
+    for (uint group = 0; group < simdGroup; ++group) {
+        before += sums[group];
+    }
+    if (local == 0) {
+        uint aggregate = 0;
+        for (uint group = 0; group < scanPartition / simdWidth; ++group) {
+            aggregate += sums[group];
         }
-        if (index < u.tileCount) {
-            offsets[index + 1] = carry + values[local];
+        atomic_store_explicit(&state[partition + 1], (aggregate << 2) | 1u,
+                              memory_order_relaxed);
+
+        uint carry = 0;
+        uint previous = partition;
+        while (previous > 0) {
+            uint descriptor = atomic_load_explicit(&state[previous], memory_order_relaxed);
+            if ((descriptor & 3u) == 0u) {
+                uint base = (previous - 1u) * scanPartition;
+                for (uint item = base; item < min(base + scanPartition, u.tileCount); ++item) {
+                    carry += counts[item];
+                }
+                --previous;
+                continue;
+            }
+            carry += descriptor >> 2;
+            if ((descriptor & 3u) == 2u) {
+                break;
+            }
+            --previous;
         }
-        carry += values[scanPartition - 1];
-        threadgroup_barrier(mem_flags::mem_threadgroup);
+        prefix = carry;
+        atomic_store_explicit(&state[partition + 1], ((carry + aggregate) << 2) | 2u,
+                              memory_order_relaxed);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (index < u.tileCount) {
+        offsets[index] = prefix + before + exclusive;
+        if (index + 1 == u.tileCount) {
+            offsets[index + 1] = prefix + before + exclusive + value;
+        }
     }
 }
 

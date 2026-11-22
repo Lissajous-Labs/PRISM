@@ -61,6 +61,29 @@ int main() {
             worst = std::max(worst, static_cast<double>(std::abs(expected[i] - actual[i])));
         }
     }
+    reference.resize({513, 257});
+    gpu->resize({513, 257});
+    list.clear();
+    render::VectorPath wide;
+    wide.moveTo({-3.25, 2.75});
+    wide.lineTo({511.5, 19.125});
+    wide.lineTo({490.25, 259.5});
+    wide.lineTo({11.75, 242.125});
+    wide.close();
+    wide.moveTo({100.5, 70.25});
+    wide.lineTo({400.75, 80.125});
+    wide.lineTo({350.25, 201.5});
+    wide.close();
+    list.fillPath(wide, render::packColor(255, 255, 255, 255), render::FillRule::evenOdd);
+    const auto expected = test::renderFull(reference, test::viewOf(list));
+    const auto actual = test::renderFull(*gpu, test::viewOf(list));
+    if (expected.empty() or actual.empty()) {
+        return 1;
+    }
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        worst = std::max(worst, static_cast<double>(std::abs(expected[i] - actual[i])));
+    }
+
     std::cout << "GPU vector coverage worst difference: " << worst << '\n';
     if (worst >= 1e-3) {
         std::cerr << "GPU vector engine contract failed\n";

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 
 namespace prism::backends {
 namespace {
@@ -99,7 +100,13 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
         upload(gpu, b.offsets, nullptr, (tiles + 1) * 4);
         upload(gpu, b.backdrops, nullptr, tiles * 4);
         upload(gpu, b.cursors, nullptr, tiles * 4);
-        upload(gpu, b.pieces, nullptr, pieceBound(segments, b.columns, b.rows) * 8);
+        const std::size_t pieces = pieceBound(segments, b.columns, b.rows);
+        if (pieces > (std::numeric_limits<std::uint32_t>::max() >> 2)) {
+            throw std::length_error("vector path exceeds scan descriptor capacity");
+        }
+
+        upload(gpu, b.pieces, nullptr, pieces * 8);
+        upload(gpu, b.scanState, nullptr, ((tiles + scanPartition - 1) / scanPartition + 1) * 4);
     }
     id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
     for (std::size_t i = 0; i < frame.paths.size(); ++i) {
@@ -108,6 +115,7 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
         zero(blit, b.counts, tiles * 4);
         zero(blit, b.rowDeltas, (b.columns + 1) * b.rows * 4);
         zero(blit, b.cursors, tiles * 4);
+        zero(blit, b.scanState, ((tiles + scanPartition - 1) / scanPartition + 1) * 4);
     }
     [blit endEncoding];
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
@@ -126,7 +134,10 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
         [encoder setBuffer:b.counts offset:0 atIndex:0];
         [encoder setBuffer:b.offsets offset:0 atIndex:1];
         [encoder setBytes:&uniforms length:sizeof(uniforms) atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1)
+        [encoder setBuffer:b.scanState offset:0 atIndex:3];
+        [encoder dispatchThreadgroups:MTLSizeMake((uniforms.tileCount + scanPartition - 1) /
+                                                      scanPartition,
+                                                  1, 1)
                 threadsPerThreadgroup:MTLSizeMake(scanPartition, 1, 1)];
         [encoder setComputePipelineState:device.pathBackdrop];
         [encoder setBuffer:b.rowDeltas offset:0 atIndex:0];

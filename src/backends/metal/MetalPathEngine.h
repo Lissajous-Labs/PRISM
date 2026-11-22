@@ -16,6 +16,7 @@ struct MetalPathBuffers {
     id<MTLBuffer> counts = nil;
     id<MTLBuffer> rowDeltas = nil;
     id<MTLBuffer> offsets = nil;
+    id<MTLBuffer> scanState = nil;
     id<MTLBuffer> backdrops = nil;
     id<MTLBuffer> cursors = nil;
     id<MTLBuffer> pieces = nil;

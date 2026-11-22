@@ -3,6 +3,7 @@
 #include "backends/metal/MetalUpload.h"
 
 #include <cstring>
+#include <utility>
 
 #import <QuartzCore/CAMetalLayer.h>
 
@@ -16,11 +17,13 @@ MetalSurface::MetalSurface(std::shared_ptr<MetalDeviceState> device, hal::Surfac
     }
 }
 
-MetalSurface::~MetalSurface() = default;
+MetalSurface::~MetalSurface() { waitIdle(); }
 
 hal::Extent MetalSurface::extent() const noexcept { return state_->extent; }
 
 void MetalSurface::resize(hal::Extent extent) {
+    waitIdle();
+    state_->recoverDamage = true;
     state_->extent = extent;
     @autoreleasepool {
         state_->createTargets();
@@ -28,6 +31,7 @@ void MetalSurface::resize(hal::Extent extent) {
 }
 
 void MetalSurface::loseDevice() noexcept {
+    waitIdle();
     state_->lost = true;
     state_->releaseTargets();
 }
@@ -44,17 +48,25 @@ bool MetalSurface::lost() const noexcept { return state_->lost; }
 
 void MetalSurface::setEarlyDepth(bool enabled) noexcept { state_->earlyDepth = enabled; }
 void MetalSurface::setFragmentCounting(bool enabled) noexcept { state_->counting = enabled; }
-std::uint32_t MetalSurface::lastFragmentCount() const noexcept { return state_->fragments; }
-double MetalSurface::lastGpuMilliseconds() const noexcept { return state_->gpuMilliseconds; }
+std::uint32_t MetalSurface::lastFragmentCount() const noexcept {
+    state_->pollFrames();
+    return state_->fragments;
+}
+double MetalSurface::lastGpuMilliseconds() const noexcept {
+    state_->pollFrames();
+    return state_->gpuMilliseconds;
+}
 std::uint32_t MetalSurface::lastDrawCalls() const noexcept { return state_->drawCalls; }
 std::size_t MetalSurface::lastUploadBytes() const noexcept { return state_->uploadBytes; }
 bool MetalSurface::lastSubmitted() const noexcept { return state_->submitted; }
 
 bool MetalSurface::render(const render::FrameRequest &request) {
-    if (state_->lost || request.damage == nullptr) {
+    state_->pollFrames();
+    if (state_->lost || request.damage == nullptr || state_->completed == nil) {
         return false;
     }
-    state_->submitted = !request.damage->empty() || request.bloom != nullptr;
+    state_->submitted =
+        !request.damage->empty() || request.bloom != nullptr || state_->recoverDamage;
     if (!state_->submitted) {
         state_->gpuMilliseconds = 0;
         state_->drawCalls = 0;
@@ -62,18 +74,23 @@ bool MetalSurface::render(const render::FrameRequest &request) {
         return true;
     }
     @autoreleasepool {
+        auto &slot = state_->frames[state_->frameNumber % state_->frames.size()];
+        if (slot.fenceValue > state_->completed.signaledValue) {
+            state_->submitted = false;
+            state_->recoverDamage = true;
+            return true;
+        }
+
+        std::swap(static_cast<MetalFrameResources &>(*state_), slot);
         state_->uploadFrame(request.view);
         *static_cast<std::uint32_t *>(state_->counter.contents) = 0;
         id<MTLCommandBuffer> commands = [state_->queue commandBuffer];
         state_->encodeFrame(commands, request);
+        state_->commands = commands;
+        state_->fenceValue = ++state_->frameNumber;
+        [commands encodeSignalEvent:state_->completed value:state_->fenceValue];
+        std::swap(static_cast<MetalFrameResources &>(*state_), slot);
         [commands commit];
-        [commands waitUntilCompleted];
-        state_->fragments = *static_cast<const std::uint32_t *>(state_->counter.contents);
-        state_->gpuMilliseconds = (commands.GPUEndTime - commands.GPUStartTime) * 1000.0;
-        if (commands.status != MTLCommandBufferStatusCompleted) {
-            state_->lost = true;
-            return false;
-        }
     }
     return true;
 }
@@ -101,6 +118,10 @@ bool MetalSurface::readback(std::span<float> rgba) {
         [blit endEncoding];
         [commands commit];
         [commands waitUntilCompleted];
+        state_->pollFrames();
+        if (commands.status != MTLCommandBufferStatusCompleted || state_->lost) {
+            return false;
+        }
         const auto *halves = static_cast<const std::uint16_t *>(state_->readback.contents);
         for (std::size_t i = 0; i < pixels * 4; ++i) {
             rgba[i] = halfToFloat(halves[i]);
@@ -128,6 +149,10 @@ bool MetalSurface::readbackPresented(std::span<std::uint8_t> rgba, std::uint32_t
         [encoder endEncoding];
         [commands commit];
         [commands waitUntilCompleted];
+        state_->pollFrames();
+        if (commands.status != MTLCommandBufferStatusCompleted || state_->lost) {
+            return false;
+        }
         std::memcpy(rgba.data(), state_->readback.contents, pixels * 4);
     }
     return true;
@@ -173,6 +198,7 @@ void MetalSurface::waitIdle() {
         id<MTLCommandBuffer> fence = [state_->queue commandBuffer];
         [fence commit];
         [fence waitUntilCompleted];
+        state_->pollFrames();
     }
 }
 }

@@ -26,28 +26,39 @@ struct FrameUniforms {
     float origin[2];
 };
 
-struct MetalSurfaceState {
-    std::shared_ptr<MetalDeviceState> device;
-    hal::Extent extent;
-    id<MTLCommandQueue> queue = nil;
-    id<MTLTexture> color = nil;
-    id<MTLTexture> depth = nil;
+struct MetalFrameResources {
     id<MTLBuffer> primitives = nil;
     id<MTLBuffer> payload = nil;
     id<MTLBuffer> transforms = nil;
     id<MTLBuffer> clips = nil;
     id<MTLBuffer> indices = nil;
     id<MTLBuffer> counter = nil;
-    id<MTLBuffer> readback = nil;
+    id<MTLBuffer> scratchIndexBuffer = nil;
     id<MTLTexture> gradients = nil;
     std::array<id<MTLTexture>, textureSlots> textures{};
     std::array<render::TextureView, textureSlots> uploadedTextures{};
-    render::UberBatches batches;
     MetalPathEngine paths;
-    MetalEffects effects;
     MetalFormantCache formants;
     MetalHalftoneCache halftones;
     MetalShadowCache shadows;
+    MetalEffects effects;
+    id<MTLCommandBuffer> commands = nil;
+    std::uint64_t fenceValue = 0;
+};
+
+struct MetalSurfaceState : MetalFrameResources {
+    std::shared_ptr<MetalDeviceState> device;
+    hal::Extent extent;
+    id<MTLCommandQueue> queue = nil;
+    id<MTLSharedEvent> completed = nil;
+    std::array<MetalFrameResources, 3> frames;
+    std::uint64_t frameNumber = 0;
+    std::uint64_t measuredFrame = 0;
+    id<MTLTexture> color = nil;
+    id<MTLTexture> depth = nil;
+    id<MTLBuffer> readback = nil;
+    render::UberBatches batches;
+    bool recoverDamage = false;
     std::vector<std::pair<std::uint32_t, render::WavetableLine>> wavetableLines;
     [[nodiscard]] const render::WavetableLine *wavetableLine(std::uint32_t index) const noexcept {
         for (const auto &entry : wavetableLines) {
@@ -68,7 +79,6 @@ struct MetalSurfaceState {
     std::vector<hal::Rect> primitiveBounds;
     std::vector<std::uint32_t> scratchIndices;
     std::vector<ScratchRange> scratchRanges;
-    id<MTLBuffer> scratchIndexBuffer = nil;
     std::vector<hal::Rect> damageRects;
     std::vector<std::array<std::int32_t, 2>> scratchSlots;
     id<MTLTexture> scratchColor = nil;
@@ -83,6 +93,7 @@ struct MetalSurfaceState {
     bool submitted = false;
 
     void createTargets();
+    void pollFrames() noexcept;
     void releaseTargets();
     void uploadFrame(const render::FrameView &view);
     [[nodiscard]] id<MTLTexture> presentedTexture() const noexcept {

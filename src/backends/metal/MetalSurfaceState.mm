@@ -5,6 +5,14 @@
 namespace prism::backends {
 void MetalSurfaceState::createTargets() {
     queue = [device->device newCommandQueue];
+    completed = [device->device newSharedEvent];
+    frameNumber = 0;
+    measuredFrame = 0;
+    recoverDamage = true;
+    for (auto &slot : frames) {
+        slot.commands = nil;
+        slot.fenceValue = 0;
+    }
     MTLTextureDescriptor *colorDescriptor =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA16Float
                                                            width:extent.width
@@ -22,8 +30,6 @@ void MetalSurfaceState::createTargets() {
     depthDescriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
     depthDescriptor.storageMode = MTLStorageModePrivate;
     depth = [device->device newTextureWithDescriptor:depthDescriptor];
-    counter = [device->device newBufferWithLength:sizeof(std::uint32_t)
-                                          options:MTLResourceStorageModeShared];
 }
 
 void MetalSurfaceState::releaseTargets() {
@@ -32,6 +38,22 @@ void MetalSurfaceState::releaseTargets() {
     depth = nil;
     scratchColor = nil;
     scratchDepth = nil;
+}
+
+void MetalSurfaceState::pollFrames() noexcept {
+    for (const auto &slot : frames) {
+        if (slot.commands == nil) {
+            continue;
+        }
+        if (slot.commands.status == MTLCommandBufferStatusError) {
+            lost = true;
+        } else if (slot.commands.status == MTLCommandBufferStatusCompleted &&
+                   slot.fenceValue > measuredFrame) {
+            measuredFrame = slot.fenceValue;
+            fragments = *static_cast<const std::uint32_t *>(slot.counter.contents);
+            gpuMilliseconds = (slot.commands.GPUEndTime - slot.commands.GPUStartTime) * 1000.0;
+        }
+    }
 }
 
 void MetalSurfaceState::encodeScratch(id<MTLCommandBuffer> commands, FrameUniforms uniforms,
@@ -198,6 +220,10 @@ void MetalSurfaceState::encodeScratch(id<MTLCommandBuffer> commands, FrameUnifor
 
 void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
     id<MTLDevice> gpu = device->device;
+    if (counter == nil) {
+        counter = [gpu newBufferWithLength:sizeof(std::uint32_t)
+                                   options:MTLResourceStorageModeShared];
+    }
     upload(gpu, primitives, view.primitives.data(), view.primitives.size_bytes());
     upload(gpu, payload, view.payload.data(), view.payload.size_bytes());
     upload(gpu, transforms, view.transforms.data(), view.transforms.size_bytes());
@@ -387,7 +413,7 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
     const PathFineTargets targets{color, depth, transforms, clips, primitiveCount};
     const auto &view = request.view;
     damageRects.clear();
-    if (!view.effects.empty()) {
+    if (recoverDamage || !view.effects.empty()) {
         damageRects.push_back(viewport);
     } else {
         request.damage->forEachRect([&](hal::Rect rect) {
@@ -398,6 +424,7 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
             }
         });
     }
+    recoverDamage = false;
     const auto scissor = [](id<MTLRenderCommandEncoder> encoder, hal::Rect rect) {
         [encoder setScissorRect:MTLScissorRect{static_cast<NSUInteger>(rect.x0),
                                                static_cast<NSUInteger>(rect.y0),

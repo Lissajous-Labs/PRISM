@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <iostream>
 #include <new>
+#include <pthread/qos.h>
 
 namespace {
 std::atomic<bool> counting{false};
@@ -103,6 +104,7 @@ void operator delete[](void *pointer, std::size_t, std::align_val_t) noexcept {
 namespace prism::bench {
 std::optional<BenchContext> openContext(hal::Extent extent) {
     BenchContext context;
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
     context.device = backends::MetalDevice::create();
     if (!context.device) {
         return std::nullopt;

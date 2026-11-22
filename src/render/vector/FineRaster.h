@@ -2,6 +2,7 @@
 
 #include "render/vector/PathTiler.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <span>
@@ -52,16 +53,15 @@ inline constexpr float windingScale = 1048576.0f;
         std::lrint(pieceContribution(packed, column, row) * windingScale));
 }
 
-[[nodiscard]] inline float resolveWinding(std::int32_t fixedSum) noexcept {
-    return static_cast<float>((fixedSum + 128) >> 8) / 4096.0f;
-}
-
-[[nodiscard]] inline float windingToAlpha(float winding, FillRule rule) noexcept {
-    const float magnitude = std::fabs(winding);
-    if (rule == FillRule::nonZero) {
-        return std::fmin(magnitude, 1.0f);
+[[nodiscard]] inline float windingToAlpha(std::int64_t fixedSum, FillRule rule) noexcept {
+    std::int64_t winding = (fixedSum >> 8) + ((fixedSum & 255) >= 128 ? 1 : 0);
+    if (rule == FillRule::evenOdd) {
+        winding %= 8192;
     }
-    return 1.0f - std::fabs(std::fmod(magnitude, 2.0f) - 1.0f);
+    const std::int64_t magnitude = winding < 0 ? -winding : winding;
+    const std::int64_t alpha = rule == FillRule::nonZero ? std::min<std::int64_t>(magnitude, 4096)
+                                                         : std::min(magnitude, 8192 - magnitude);
+    return static_cast<float>(alpha) / 4096.0f;
 }
 
 void rasterizeCoverage(const PathTiler &tiler, FillRule rule, std::uint32_t width,

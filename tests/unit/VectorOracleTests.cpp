@@ -6,8 +6,10 @@
 #include "render/vector/VectorPath.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <numbers>
 #include <vector>
 
@@ -83,7 +85,10 @@ bool checkAgainstClipping(test::Pcg &random) {
             for (std::uint32_t x = 0; x < canvas; ++x) {
                 const double winding =
                     test::pixelWinding(contours, static_cast<int>(x), static_cast<int>(y));
-                const double expected = render::windingToAlpha(static_cast<float>(winding), rule);
+                const double magnitude = std::abs(winding);
+                const double expected = rule == render::FillRule::nonZero
+                                            ? std::min(magnitude, 1.0)
+                                            : 1 - std::abs(std::fmod(magnitude, 2.0) - 1);
                 worst = std::max(worst, std::abs(coverage[y * canvas + x] - expected));
             }
         }
@@ -135,11 +140,41 @@ bool checkSteadyState() {
     render::rasterizeCoverage(tiler, render::FillRule::nonZero, canvas, canvas, coverage);
     return guard.counts().empty();
 }
+
+bool checkWindingRange() {
+    constexpr std::int64_t scale = 1048576;
+    constexpr std::array<std::int64_t, 5> turns{0, 4096, std::int64_t{1} << 24,
+                                                std::int64_t{1} << 32, std::int64_t{1} << 40};
+    for (const auto turn : turns) {
+        for (int quarter = 0; quarter <= 8; ++quarter) {
+            const std::int64_t fixed = turn * scale + quarter * (scale / 4);
+            const float nonZero = turn == 0 ? std::min(quarter * 0.25f, 1.0f) : 1.0f;
+            const float evenOdd = quarter <= 4 ? quarter * 0.25f : 2 - quarter * 0.25f;
+            for (const int direction : {-1, 1}) {
+                if (render::windingToAlpha(direction * fixed, render::FillRule::nonZero) !=
+                        nonZero or
+                    render::windingToAlpha(direction * fixed, render::FillRule::evenOdd) !=
+                        evenOdd) {
+                    return false;
+                }
+            }
+        }
+    }
+    for (const auto limit :
+         {std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::max()}) {
+        if (render::windingToAlpha(limit, render::FillRule::nonZero) != 1 or
+            render::windingToAlpha(limit, render::FillRule::evenOdd) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
 }
 
 int main() {
     test::Pcg random(71);
-    if (!checkAgainstClipping(random) || !checkAgainstSampling(random) || !checkSteadyState()) {
+    if (not checkAgainstClipping(random) or not checkAgainstSampling(random) or
+        not checkSteadyState() or not checkWindingRange()) {
         std::cerr << "Vector rasterizer contract failed\n";
         return 1;
     }

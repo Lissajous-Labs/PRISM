@@ -204,6 +204,50 @@ int main() {
         }
     }
 
+    reference.resize({48, 48});
+    gpu->resize({48, 48});
+    for (const int direction : {-1, 1}) {
+        render::VectorPath path;
+        for (int contour = 0; contour < 4096; ++contour) {
+            path.moveTo({-8, -8});
+            path.lineTo(direction > 0 ? math::Vector2{56, -8} : math::Vector2{-8, 56});
+            path.lineTo({56, 56});
+            path.lineTo(direction > 0 ? math::Vector2{-8, 56} : math::Vector2{56, -8});
+            path.close();
+        }
+        path.moveTo({3.25, 5.75});
+        path.lineTo({46.125, 17.5});
+        path.lineTo({13.5, 44.25});
+        path.close();
+        for (const auto rule : {render::FillRule::nonZero, render::FillRule::evenOdd}) {
+            list.clear();
+            list.fillPath(path, render::packColor(255, 255, 255, 255), rule);
+            const auto expectedWinding = test::renderFull(reference, test::viewOf(list));
+            const auto actualWinding = test::renderFull(*gpu, test::viewOf(list));
+            if (expectedWinding.empty() or actualWinding.empty()) {
+                return 1;
+            }
+            const float outsideTriangle = rule == render::FillRule::nonZero ? 1.0f : 0.0f;
+            if (actualWinding[0] != outsideTriangle or expectedWinding[0] != outsideTriangle) {
+                std::cerr << "Enclosing-contour winding mismatch: GPU " << actualWinding[0]
+                          << ", CPU " << expectedWinding[0] << ", expected " << outsideTriangle
+                          << '\n';
+                return 1;
+            }
+            for (std::size_t i = 0; i < expectedWinding.size(); ++i) {
+                const double error = std::abs(expectedWinding[i] - actualWinding[i]);
+                if (error >= 1e-3) {
+                    std::cerr << "High-winding coverage mismatch for direction " << direction
+                              << ", fill rule " << static_cast<int>(rule) << ", pixel " << i / 4
+                              << ": " << actualWinding[i] << " expected " << expectedWinding[i]
+                              << '\n';
+                    return 1;
+                }
+                worst = std::max(worst, error);
+            }
+        }
+    }
+
     std::cout << "GPU vector coverage worst difference: " << worst << '\n';
     if (worst >= 1e-3) {
         std::cerr << "GPU vector engine contract failed\n";

@@ -329,9 +329,14 @@ int fixedContribution(uint2 packed, uint column, uint row) {
     return int(rint(dy * average * windingScale));
 }
 
-float windingToAlpha(float winding, uint rule) {
-    float magnitude = abs(winding);
-    return rule == 0u ? min(magnitude, 1.0f) : 1.0f - abs(fmod(magnitude, 2.0f) - 1.0f);
+float windingToAlpha(long fixedSum, uint rule) {
+    long winding = (fixedSum >> 8) + ((fixedSum & 255l) >= 128l ? 1l : 0l);
+    if (rule != 0u) {
+        winding %= 8192l;
+    }
+    long magnitude = winding < 0l ? -winding : winding;
+    long alpha = rule == 0u ? min(magnitude, 4096l) : min(magnitude, 8192l - magnitude);
+    return float(alpha) / 4096.0f;
 }
 
 kernel void pathFine(constant BatchPath *paths [[buffer(0)]],
@@ -349,7 +354,7 @@ kernel void pathFine(constant BatchPath *paths [[buffer(0)]],
     uint first = path.offsets[tile];
     uint last = path.offsets[tile + 1];
     uint flat = local.y * 16u + local.x;
-    int sum = path.backdrops[tile] * int(windingScale);
+    long sum = long(path.backdrops[tile]) * long(windingScale);
     for (uint chunk = first; chunk < last; chunk += 256u) {
         uint count = min(256u, last - chunk);
         if (flat < count) {
@@ -363,7 +368,7 @@ kernel void pathFine(constant BatchPath *paths [[buffer(0)]],
     }
     uint2 localPixel = tileIndex.xy * 16u + local.xy;
     uint2 pixel = localPixel + uint2(u.origin.xy) * 16u;
-    float coverage = windingToAlpha(float((sum + 128) >> 8) / 4096.0f, u.fillRule);
+    float coverage = windingToAlpha(sum, u.fillRule);
     if (u.clipId != 0u) {
         FrameBuffers frame;
         frame.transforms = transforms;

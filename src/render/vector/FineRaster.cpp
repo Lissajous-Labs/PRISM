@@ -9,8 +9,8 @@ void rasterizeCoverage(const PathTiler &tiler, FillRule rule, std::uint32_t widt
     for (std::uint32_t tileRow = 0; tileRow < grid.rows; ++tileRow) {
         for (std::uint32_t tileColumn = 0; tileColumn < grid.columns; ++tileColumn) {
             const std::size_t tile = static_cast<std::size_t>(tileRow) * grid.columns + tileColumn;
-            const std::int32_t backdrop =
-                tiler.backdrops()[tile] * static_cast<std::int32_t>(windingScale);
+            const std::int64_t backdrop = static_cast<std::int64_t>(tiler.backdrops()[tile]) *
+                                          static_cast<std::int64_t>(windingScale);
             for (std::uint32_t j = 0; j < pathTileSize; ++j) {
                 const std::uint32_t y = tileRow * pathTileSize + j;
                 if (y >= height) {
@@ -21,12 +21,11 @@ void rasterizeCoverage(const PathTiler &tiler, FillRule rule, std::uint32_t widt
                     if (x >= width) {
                         break;
                     }
-                    std::int32_t sum = backdrop;
+                    std::int64_t sum = backdrop;
                     for (std::uint32_t p = offsets[tile]; p < offsets[tile + 1]; ++p) {
                         sum += fixedContribution(pieces[p], i, j);
                     }
-                    coverage[static_cast<std::size_t>(y) * width + x] =
-                        windingToAlpha(resolveWinding(sum), rule);
+                    coverage[static_cast<std::size_t>(y) * width + x] = windingToAlpha(sum, rule);
                 }
             }
         }

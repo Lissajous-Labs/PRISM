@@ -298,7 +298,10 @@ ShadeOut shadeTexture(PrimitiveDesc d, device const float *payload, TransformRec
     uint uvOffset = d.payloadOffset;
     float2 uv = float2(payload[uvOffset] + u * (payload[uvOffset + 2] - payload[uvOffset]),
                        payload[uvOffset + 1] + v * (payload[uvOffset + 3] - payload[uvOffset + 1]));
-    float4 texel = texture.sample(glyphSampler, uv);
+    float2 size = float2(texture.get_width(), texture.get_height());
+    bool texelUnits = d.params[3] > 0.0f;
+    float2 uvScale = texelUnits ? float2(1.0f) : size;
+    float4 texel = texture.sample(glyphSampler, texelUnits ? uv / size : uv);
     uint kind = d.kindFlags & kindMask;
     float luminance = color.a > 0.0f ? dot(color.rgb, float3(0.2126f, 0.7152f, 0.0722f)) / color.a : 0.0f;
     float bias = d.params[1] > 0.0f ? polarityStemBias(d.params[1], d.params[2], luminance) : 0.0f;
@@ -312,9 +315,9 @@ ShadeOut shadeTexture(PrimitiveDesc d, device const float *payload, TransformRec
         result.subpixel = true;
     } else if (kind == kindGlyphMtsdf) {
         float median = max(min(texel.x, texel.y), min(max(texel.x, texel.y), texel.z));
-        float su = (payload[uvOffset + 2] - payload[uvOffset]) * float(texture.get_width()) /
+        float su = (payload[uvOffset + 2] - payload[uvOffset]) * uvScale.x /
                    (d.bounds[2] - d.bounds[0]);
-        float sv = (payload[uvOffset + 3] - payload[uvOffset + 1]) * float(texture.get_height()) /
+        float sv = (payload[uvOffset + 3] - payload[uvOffset + 1]) * uvScale.y /
                    (d.bounds[3] - d.bounds[1]);
         float2 rowU = su * float2(t.inverse[0], t.inverse[2]);
         float2 rowV = sv * float2(t.inverse[1], t.inverse[3]);

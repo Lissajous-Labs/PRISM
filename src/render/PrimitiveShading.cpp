@@ -130,7 +130,13 @@ ShadeResult shadeTexture(const FrameView &frame, const PrimitiveDesc &desc,
         return solid({0, 0, 0, 0});
     }
     const TextureView &texture = frame.textures[desc.auxHandle];
-    const Vector2 uv = textureCoordinate(frame, desc, local);
+    const bool texelUnits = desc.params[3] > 0;
+    const double scaleU = texelUnits ? 1.0 : texture.width;
+    const double scaleV = texelUnits ? 1.0 : texture.height;
+    const Vector2 raw = textureCoordinate(frame, desc, local);
+    const Vector2 uv = texelUnits && texture.width != 0 && texture.height != 0
+                           ? Vector2{raw.x / texture.width, raw.y / texture.height}
+                           : raw;
     const Texel texel = sampleFiltered(texture, uv.x, uv.y);
     const auto color = detail::decodeColor(desc.color);
     const float luminance =
@@ -156,10 +162,10 @@ ShadeResult shadeTexture(const FrameView &frame, const PrimitiveDesc &desc,
         const double median = std::max(std::min(texel[0], texel[1]),
                                        std::min(std::max(texel[0], texel[1]), texel[2]));
         const std::uint32_t uvOffset = desc.payloadOffset;
-        const double su = (frame.payload[uvOffset + 2] - frame.payload[uvOffset]) * texture.width /
+        const double su = (frame.payload[uvOffset + 2] - frame.payload[uvOffset]) * scaleU /
                           (desc.bounds[2] - desc.bounds[0]);
-        const double sv = (frame.payload[uvOffset + 3] - frame.payload[uvOffset + 1]) *
-                          texture.height / (desc.bounds[3] - desc.bounds[1]);
+        const double sv = (frame.payload[uvOffset + 3] - frame.payload[uvOffset + 1]) * scaleV /
+                          (desc.bounds[3] - desc.bounds[1]);
         const double j00 = su * transform.inverse[0];
         const double j01 = su * transform.inverse[2];
         const double j10 = sv * transform.inverse[1];

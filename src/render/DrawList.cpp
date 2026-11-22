@@ -270,6 +270,7 @@ void DrawList::glyphQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint32_t
     PrimitiveDesc &desc = primitives_.back();
     desc.params[1] = ppem;
     desc.params[2] = background;
+    desc.params[3] = 1;
 }
 
 void DrawList::plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,

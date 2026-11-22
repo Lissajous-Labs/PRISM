@@ -104,4 +104,53 @@ inline id<MTLTexture> uploadTexture(id<MTLDevice> device, id<MTLTexture> cached,
               bytesPerRow:width * pixelBytes];
     return cached;
 }
+
+struct TileCopy {
+    std::size_t slot;
+    std::uint32_t x;
+    std::uint32_t y;
+    std::uint32_t width;
+    std::uint32_t height;
+    std::size_t offset;
+    std::size_t rowBytes;
+};
+
+inline std::size_t stageTile(std::vector<unsigned char> &staging, std::uint32_t textureWidth,
+                             std::uint32_t channels, std::span<const float> texels,
+                             hal::PixelFormat format, std::uint32_t x, std::uint32_t y,
+                             std::uint32_t width, std::uint32_t height, std::size_t &rowBytes) {
+    const bool half =
+        format == hal::PixelFormat::r16Float || format == hal::PixelFormat::rgba16Float;
+    const std::size_t outputChannels =
+        format == hal::PixelFormat::rg32Float                                         ? 2
+        : format == hal::PixelFormat::r16Float || format == hal::PixelFormat::r8Unorm ? 1
+                                                                                      : 4;
+    const std::size_t channelBytes = format == hal::PixelFormat::r8Unorm ? 1 : half ? 2 : 4;
+    rowBytes = width * outputChannels * channelBytes;
+    const std::size_t offset = (staging.size() + 255) & ~std::size_t{255};
+    staging.resize(offset + rowBytes * height);
+    unsigned char *out = staging.data() + offset;
+
+    for (std::uint32_t row = 0; row < height; ++row) {
+        for (std::uint32_t column = 0; column < width; ++column) {
+            const std::size_t source =
+                (static_cast<std::size_t>(y + row) * textureWidth + x + column) * channels;
+            for (std::size_t c = 0; c < outputChannels; ++c) {
+                const float value = c < channels ? texels[source + c] : (c == 3 ? 1.0f : 0.0f);
+                unsigned char *target =
+                    out + row * rowBytes + (column * outputChannels + c) * channelBytes;
+                if (channelBytes == 1) {
+                    *target =
+                        static_cast<unsigned char>(std::clamp(value, 0.0f, 1.0f) * 255 + 0.5f);
+                } else if (half) {
+                    const _Float16 h = static_cast<_Float16>(value);
+                    std::memcpy(target, &h, 2);
+                } else {
+                    std::memcpy(target, &value, 4);
+                }
+            }
+        }
+    }
+    return offset;
+}
 }

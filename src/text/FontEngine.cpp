@@ -11,8 +11,8 @@ namespace prism::text {
 FontEngine::FontEngine(std::vector<const FontFile *> fonts, std::uint32_t textureBase,
                        std::uint32_t pageSize)
     : fonts_(std::move(fonts)), textureBase_(textureBase),
-      atlases_{GlyphAtlas(pageSize, 1, 1), GlyphAtlas(pageSize, 4, 1), GlyphAtlas(pageSize, 4, 1)} {
-}
+      atlases_{GlyphAtlas(pageSize, 1, atlasPages), GlyphAtlas(pageSize, 4, atlasPages),
+               GlyphAtlas(pageSize, 4, atlasPages)} {}
 
 TextTier FontEngine::tierFor(float physicalSize, const TextStyle &style) noexcept {
     if (style.transformed || physicalSize > tierOneMaximumPixels) {
@@ -69,11 +69,17 @@ std::optional<FontEngine::Placement> FontEngine::glyphFor(TextTier tier,
 }
 
 void FontEngine::refreshViews() {
+    constexpr std::array formats{hal::PixelFormat::r16Float, hal::PixelFormat::rgba16Float,
+                                 hal::PixelFormat::rgba32Float};
     for (std::size_t i = 0; i < atlases_.size(); ++i) {
         const GlyphAtlas &atlas = atlases_[i];
         if (atlas.pageCount() != 0) {
-            views_[i] = {atlas.pageSize(), atlas.pageSize(), atlas.channels(), atlas.page(0)};
-            views_[i].generation = rasterizations_ + 1;
+            views_[i] = {
+                atlas.pageSize(), static_cast<std::uint32_t>(atlas.pageSize() * atlas.pageCount()),
+                atlas.channels(), atlas.texels(),
+                formats[i],       atlas.modification(),
+                nullptr,          atlas.tiles(),
+                atlasTile};
         }
     }
 }
@@ -107,10 +113,11 @@ void FontEngine::draw(render::DrawList &list, const TextLayout &layout, math::Ve
             continue;
         }
         const GlyphAtlas &atlas = atlases_[static_cast<std::size_t>(tier)];
-        const float page = static_cast<float>(atlas.pageSize());
-        const render::RectF uv{placement->slot.x / page, placement->slot.y / page,
-                               (placement->slot.x + placement->slot.width) / page,
-                               (placement->slot.y + placement->slot.height) / page};
+        const auto row = static_cast<float>(placement->slot.page * atlas.pageSize());
+        const render::RectF uv{
+            static_cast<float>(placement->slot.x), row + static_cast<float>(placement->slot.y),
+            static_cast<float>(placement->slot.x + placement->slot.width),
+            row + static_cast<float>(placement->slot.y + placement->slot.height)};
         double x0;
         double y0;
         double unit;

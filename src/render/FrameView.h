@@ -19,6 +19,8 @@ struct TextureView {
     hal::PixelFormat format = hal::PixelFormat::rgba32Float;
     std::uint64_t generation = 0;
     void *nativeTexture = nullptr;
+    std::span<const std::uint64_t> tiles{};
+    std::uint32_t tileSize = 0;
 };
 
 struct FrameView {

@@ -277,6 +277,8 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
     gradients = rows ? uploadTexture(gpu, gradients, render::gradientRowTexels, rows, 4,
                                      view.gradientRows, texelScratch, hal::PixelFormat::rgba16Float)
                      : nil;
+    tileBytes.clear();
+    tileCopies.clear();
     for (std::size_t slot = 0; slot < textureSlots; ++slot) {
         if (slot < view.textures.size()) {
             const auto &texture = view.textures[slot];
@@ -289,20 +291,46 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
             if (previous.nativeTexture != nullptr) {
                 textures[slot] = nil;
             }
-            if (textures[slot] == nil || texture.generation == 0 ||
-                previous.generation != texture.generation ||
-                previous.texels.data() != texture.texels.data() ||
-                previous.width != texture.width || previous.height != texture.height ||
-                previous.channels != texture.channels || previous.format != texture.format) {
-                textures[slot] =
-                    uploadTexture(gpu, textures[slot], texture.width, texture.height,
-                                  texture.channels, texture.texels, texelScratch, texture.format);
-                uploadedTextures[slot] = texture;
-                uploadBytes += texture.texels.size_bytes();
+            const bool sameStorage =
+                textures[slot] != nil && texture.generation != 0 &&
+                previous.texels.data() == texture.texels.data() &&
+                previous.width == texture.width && previous.height == texture.height &&
+                previous.channels == texture.channels && previous.format == texture.format;
+            if (sameStorage && previous.generation == texture.generation) {
+                continue;
             }
+            if (sameStorage && texture.tileSize != 0 && !texture.tiles.empty()) {
+                const std::uint32_t columns =
+                    (texture.width + texture.tileSize - 1) / texture.tileSize;
+                for (std::size_t tile = 0; tile < texture.tiles.size(); ++tile) {
+                    if (texture.tiles[tile] <= previous.generation) {
+                        continue;
+                    }
+                    const auto x = static_cast<std::uint32_t>(tile % columns) * texture.tileSize;
+                    const auto y = static_cast<std::uint32_t>(tile / columns) * texture.tileSize;
+                    const std::uint32_t width = std::min(texture.tileSize, texture.width - x);
+                    const std::uint32_t height = std::min(texture.tileSize, texture.height - y);
+                    std::size_t rowBytes = 0;
+                    const std::size_t offset =
+                        stageTile(tileBytes, texture.width, texture.channels, texture.texels,
+                                  texture.format, x, y, width, height, rowBytes);
+                    tileCopies.push_back({slot, x, y, width, height, offset, rowBytes});
+                    uploadBytes += rowBytes * height;
+                }
+                uploadedTextures[slot] = texture;
+                continue;
+            }
+            textures[slot] =
+                uploadTexture(gpu, textures[slot], texture.width, texture.height, texture.channels,
+                              texture.texels, texelScratch, texture.format);
+            uploadedTextures[slot] = texture;
+            uploadBytes += texture.texels.size_bytes();
         } else {
             textures[slot] = nil;
         }
+    }
+    if (!tileCopies.empty()) {
+        upload(gpu, tileStaging, tileBytes.data(), tileBytes.size());
     }
     formants.prepare(*device, view, primitives, extent,
                      present(render::PrimitiveKind::formantCurve));
@@ -415,6 +443,22 @@ id<CAMetalDrawable> MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands
                            0,
                            0,
                            {0, 0}};
+    if (!tileCopies.empty()) {
+        id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
+        for (const TileCopy &copy : tileCopies) {
+            [blit copyFromBuffer:tileStaging
+                       sourceOffset:copy.offset
+                  sourceBytesPerRow:copy.rowBytes
+                sourceBytesPerImage:copy.rowBytes * copy.height
+                         sourceSize:MTLSizeMake(copy.width, copy.height, 1)
+                          toTexture:textures[copy.slot]
+                   destinationSlice:0
+                   destinationLevel:0
+                  destinationOrigin:MTLOriginMake(copy.x, copy.y, 0)];
+        }
+        [blit endEncoding];
+        tileCopies.clear();
+    }
     for (auto *spectrogram : device->spectrograms) {
         const auto field = spectrogram->field().nativeTexture;
         const auto integral = spectrogram->integral().nativeTexture;

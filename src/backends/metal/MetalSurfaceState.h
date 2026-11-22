@@ -9,6 +9,7 @@
 #include "backends/metal/MetalPathEngine.h"
 #include "backends/metal/MetalShadowCache.h"
 #include "backends/metal/MetalState.h"
+#include "backends/metal/MetalUpload.h"
 #include "render/RenderSurface.h"
 #include "render/UberBatches.h"
 #include "render/Wavetable3d.h"
@@ -36,6 +37,7 @@ struct MetalFrameResources {
     id<MTLBuffer> counter = nil;
     id<MTLBuffer> scratchIndexBuffer = nil;
     id<MTLTexture> gradients = nil;
+    id<MTLBuffer> tileStaging = nil;
     std::array<id<MTLTexture>, textureSlots> textures{};
     std::array<render::TextureView, textureSlots> uploadedTextures{};
     MetalPathEngine paths;
@@ -82,6 +84,8 @@ struct MetalSurfaceState : MetalFrameResources {
     std::vector<ScratchRange> scratchRanges;
     std::vector<hal::Rect> damageRects;
     std::vector<std::array<std::int32_t, 2>> scratchSlots;
+    std::vector<unsigned char> tileBytes;
+    std::vector<TileCopy> tileCopies;
     id<MTLTexture> scratchColor = nil;
     id<MTLTexture> scratchDepth = nil;
     bool lost = false;

@@ -72,7 +72,8 @@ constant uint shadingClass =
     is_function_constant_defined(shadingClassConstant) ? shadingClassConstant : 0u;
 constant bool fullShading = shadingClass == 0u;
 constant bool analyticShading = shadingClass != 2u;
-constant bool texturedShading = shadingClass != 1u;
+constant bool texturedShading = shadingClass == 0u || shadingClass == 2u;
+constant bool compactShading = shadingClass == 3u;
 
 constant uint kindRoundedRect = 0;
 constant uint kindSquircle = 1;
@@ -138,17 +139,18 @@ float4 sceneColor(float4 color, uint colorSpace) {
 float boxCoverage(float distance, float2 normal) {
     float ax = abs(normal.x);
     float ay = abs(normal.y);
-    float norm = length(float2(ax, ay));
-    float u = norm > 0.0f ? max(ax, ay) / norm : 1.0f;
-    float v = norm > 0.0f ? min(ax, ay) / norm : 0.0f;
+    float norm = fast::length(float2(ax, ay));
+    float inverse = norm > 0.0f ? fast::divide(1.0f, norm) : 0.0f;
+    float u = norm > 0.0f ? max(ax, ay) * inverse : 1.0f;
+    float v = norm > 0.0f ? min(ax, ay) * inverse : 0.0f;
     float t = abs(distance);
     float lower = (u - v) * 0.5f;
     float upper = (u + v) * 0.5f;
     float outside = 0.0f;
     if (t <= lower) {
-        outside = 0.5f - t / u;
+        outside = 0.5f - fast::divide(t, u);
     } else if (t < upper) {
-        outside = (upper - t) * (upper - t) / (2.0f * u * v);
+        outside = fast::divide((upper - t) * (upper - t), 2.0f * u * v);
     }
     outside = clamp(outside, 0.0f, 1.0f);
     return distance >= 0.0f ? outside : 1.0f - outside;

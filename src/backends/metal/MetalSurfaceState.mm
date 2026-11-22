@@ -253,7 +253,10 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
     upload(gpu, payload, view.payload.data(), view.payload.size_bytes());
     upload(gpu, transforms, view.transforms.data(), view.transforms.size_bytes());
     upload(gpu, clips, view.clips.data(), view.clips.size_bytes());
-    batches.build(view.primitives, earlyDepth && view.effects.empty());
+    shadows.prepare(*device, view, primitives);
+    batches.build(
+        {static_cast<const render::PrimitiveDesc *>(primitives.contents), view.primitives.size()},
+        earlyDepth && view.effects.empty());
     const auto opaque = batches.opaqueIndices();
     upload(gpu, indices, opaque.data(), opaque.size_bytes());
     uploadBytes = view.primitives.size_bytes() + view.payload.size_bytes() +
@@ -294,7 +297,6 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
     }
     formants.prepare(*device, view, primitives, extent);
     halftones.prepare(*device, view, primitives, payload);
-    shadows.prepare(*device, view, primitives);
     wavetableLines.clear();
     for (std::size_t i = 0; i < view.primitives.size(); ++i) {
         if (view.primitives[i].kind() == render::PrimitiveKind::wavetable3d) {

@@ -1,7 +1,7 @@
 float sdRoundedRect(float2 p, float2 half_, float4 radii) {
     float radius = p.x > 0.0f ? (p.y > 0.0f ? radii.y : radii.x) : (p.y > 0.0f ? radii.w : radii.z);
     float2 q = abs(p) - half_ + float2(radius);
-    return min(max(q.x, q.y), 0.0f) + length(max(q, float2(0.0f))) - radius;
+    return min(max(q.x, q.y), 0.0f) + fast::length(max(q, float2(0.0f))) - radius;
 }
 
 float2 sdRoundedRectGradient(float2 p, float2 half_, float4 radii) {
@@ -9,7 +9,7 @@ float2 sdRoundedRectGradient(float2 p, float2 half_, float4 radii) {
     float2 side = float2(p.x > 0.0f ? 1.0f : -1.0f, p.y > 0.0f ? 1.0f : -1.0f);
     float2 q = abs(p) - half_ + float2(radius);
     if (q.x > 0.0f && q.y > 0.0f) {
-        return side * normalize(q);
+        return side * fast::normalize(q);
     }
     return q.x > q.y ? float2(side.x, 0.0f) : float2(0.0f, side.y);
 }
@@ -161,23 +161,27 @@ struct ArcSample {
     float2 gradient;
 };
 
-ArcSample sampleArc(float2 p, float2 center, float radius, float thickness, float midAngle,
-                    float halfAperture, uint cap) {
+float4 arcBasis(float midAngle, float halfAperture) {
     float turn = 1.5707963f - midAngle;
-    float c = cos(turn);
-    float s = sin(turn);
+    return float4(cos(turn), sin(turn), sin(halfAperture), cos(halfAperture));
+}
+
+ArcSample sampleArc(float2 p, float2 center, float radius, float thickness, float4 basis,
+                    uint cap) {
+    float c = basis.x;
+    float s = basis.y;
     float2 local = p - center;
     float foldedX = c * local.x - s * local.y;
     float2 q = float2(abs(foldedX), s * local.x + c * local.y);
-    float2 endPoint = float2(sin(halfAperture), cos(halfAperture));
+    float2 endPoint = basis.zw;
     float halfWidth = thickness * 0.5f;
     ArcSample result;
     if (endPoint.y * q.x <= endPoint.x * q.y) {
-        float norm = length(q);
+        float norm = fast::length(q);
         float radial = norm - radius;
         result.distance = abs(radial) - halfWidth;
         float side = radial > 0.0f ? 1.0f : (radial < 0.0f ? -1.0f : 0.0f);
-        result.gradient = norm > 0.0f ? q * (side / norm) : float2(0.0f);
+        result.gradient = norm > 0.0f ? q * fast::divide(side, norm) : float2(0.0f);
     } else if (cap == 1u || cap == 2u) {
         float2 frame = float2(q.x * endPoint.y - q.y * endPoint.x,
                               q.x * endPoint.x + q.y * endPoint.y - radius);
@@ -188,9 +192,9 @@ ArcSample sampleArc(float2 p, float2 center, float radius, float thickness, floa
                                  -endPoint.x * capGradient.x + endPoint.y * capGradient.y);
     } else {
         float2 delta = q - endPoint * radius;
-        float norm = length(delta);
+        float norm = fast::length(delta);
         result.distance = norm - halfWidth;
-        result.gradient = norm > 0.0f ? delta / norm : float2(0.0f);
+        result.gradient = norm > 0.0f ? delta * fast::divide(1.0f, norm) : float2(0.0f);
     }
     result.gradient.x *= foldedX > 0.0f ? 1.0f : (foldedX < 0.0f ? -1.0f : 0.0f);
     result.gradient = float2(c * result.gradient.x + s * result.gradient.y,
@@ -200,7 +204,7 @@ ArcSample sampleArc(float2 p, float2 center, float radius, float thickness, floa
 
 float sdArc(float2 p, float2 center, float radius, float thickness, float midAngle,
             float halfAperture, uint cap) {
-    return sampleArc(p, center, radius, thickness, midAngle, halfAperture, cap).distance;
+    return sampleArc(p, center, radius, thickness, arcBasis(midAngle, halfAperture), cap).distance;
 }
 
 float erfInterval(float center, float halfWidth, float sigma) {
@@ -280,7 +284,7 @@ kernel void shadowSprites(device const ShadowSprite *table [[buffer(0)]], device
 
 float sampleShadowSprite(device const ShadowSprite *table, device const float *sprites, uint index, float2 p) {
     ShadowSprite s = table[index];
-    float2 q = abs(p) / s.step;
+    float2 q = fast::divide(abs(p), float2(s.step));
     if (q.x >= float(s.width - 1u) || q.y >= float(s.height - 1u)) {
         return 0.0f;
     }

@@ -1,6 +1,26 @@
 #include "render/UberBatches.h"
 
+#include "render/FrameRecords.h"
+
 namespace prism::render {
+namespace {
+bool compactShading(const PrimitiveDesc &desc) noexcept {
+    if (desc.clipId != noClip) {
+        return false;
+    }
+
+    switch (desc.kind()) {
+    case PrimitiveKind::roundedRect:
+    case PrimitiveKind::circleArc:
+        return true;
+    case PrimitiveKind::boxShadow:
+        return !desc.has(flags::inset) && desc.params[0] > 0 && desc.auxHandle != noTexture;
+    default:
+        return false;
+    }
+}
+}
+
 UberPipeline pipelineFor(const PrimitiveDesc &desc) noexcept {
     if (desc.kind() == PrimitiveKind::glyphLcd) {
         return UberPipeline::subpixel;
@@ -8,7 +28,7 @@ UberPipeline pipelineFor(const PrimitiveDesc &desc) noexcept {
     switch (desc.blend()) {
     case hal::BlendMode::sourceOver:
         if (desc.kind() <= PrimitiveKind::boxShadow) {
-            return UberPipeline::analytic;
+            return compactShading(desc) ? UberPipeline::compact : UberPipeline::analytic;
         }
         return desc.kind() >= PrimitiveKind::glyphAlpha &&
                        desc.kind() <= PrimitiveKind::texturedQuad

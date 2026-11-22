@@ -1,6 +1,9 @@
 struct VertexOut {
     float4 position [[position]];
     uint primitive [[flat]];
+    float4 fill [[flat]];
+    float4 border [[flat]];
+    float4 shape [[flat]];
 };
 
 struct LcdOut {
@@ -37,6 +40,10 @@ vertex VertexOut uberVertex(uint vertexId [[vertex_id]], uint instanceId [[insta
                           1.0f - physical.y / uniforms.viewport.y * 2.0f,
                           1.0f - float(d.depth) / float(uniforms.maxDepth + 1u), 1.0f);
     out.primitive = index;
+    out.fill = decodeColor(d.color);
+    out.border = decodeColor(d.borderColor);
+    out.shape =
+        (d.kindFlags & kindMask) == kindArc ? arcBasis(d.params[2], d.params[3]) : float4(0.0f);
     return out;
 }
 
@@ -66,6 +73,9 @@ vertex VertexOut uberCoreVertex(uint vertexId [[vertex_id]], uint instanceId [[i
                           1.0f - physical.y / uniforms.viewport.y * 2.0f,
                           1.0f - float(d.depth) / float(uniforms.maxDepth + 1u), 1.0f);
     out.primitive = index;
+    out.fill = decodeColor(d.color);
+    out.border = decodeColor(d.borderColor);
+    out.shape = float4(0.0f);
     return out;
 }
 
@@ -85,15 +95,14 @@ ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives,
     frame.shadowSprites = shadowSprites;
     PrimitiveDesc d = primitives[in.primitive];
     uint slot = d.auxHandle == noTexture ? 0u : min(d.auxHandle, 23u);
-    return shadePrimitive(frame, d, gradients, textures[slot], in.position.xy + uniforms.origin);
+    return shadePrimitive(frame, d, gradients, textures[slot], in.position.xy + uniforms.origin,
+                          in.fill, in.border, in.shape);
 }
 
 [[early_fragment_tests]] fragment float4 uberCoreFragment(VertexOut in [[stage_in]],
-                                                          device const PrimitiveDesc *primitives
-                                                          [[buffer(0)]],
                                                           constant FrameUniforms &uniforms
                                                           [[buffer(4)]]) {
-    return outputColor(decodeColor(primitives[in.primitive].color), uniforms.outputColorSpace);
+    return outputColor(in.fill, uniforms.outputColorSpace);
 }
 
 [[early_fragment_tests]] fragment float4 uberFragment(

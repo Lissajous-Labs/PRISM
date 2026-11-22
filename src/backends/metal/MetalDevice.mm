@@ -30,6 +30,7 @@ void configureBlend(MTLRenderPipelineColorAttachmentDescriptor *attachment,
     case render::UberPipeline::sourceOver:
     case render::UberPipeline::analytic:
     case render::UberPipeline::textured:
+    case render::UberPipeline::compact:
         attachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
         break;
     case render::UberPipeline::screen:
@@ -57,6 +58,7 @@ id<MTLRenderPipelineState> buildPipeline(id<MTLDevice> device, id<MTLLibrary> li
     MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
     const std::uint32_t shadingClass = blend == render::UberPipeline::analytic   ? 1
                                        : blend == render::UberPipeline::textured ? 2
+                                       : blend == render::UberPipeline::compact  ? 3
                                                                                  : 0;
     [constants setConstantValue:&shadingClass type:MTLDataTypeUInt atIndex:0];
     descriptor.fragmentFunction =

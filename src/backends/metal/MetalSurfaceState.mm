@@ -2,6 +2,7 @@
 #include "backends/metal/MetalSpectrogram.h"
 #include "backends/metal/MetalUpload.h"
 #include "backends/metal/MetalWavetable3d.h"
+#include "math/ColorSpace.h"
 
 namespace prism::backends {
 void MetalSurfaceState::createTargets() {
@@ -10,6 +11,7 @@ void MetalSurfaceState::createTargets() {
     frameNumber = 0;
     measuredFrame = 0;
     recoverDamage = true;
+    backingValid = false;
     for (auto &slot : frames) {
         slot.commands = nil;
         slot.fenceValue = 0;
@@ -236,9 +238,14 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
                   view.transforms.size_bytes() + view.clips.size_bytes() + opaque.size_bytes() +
                   view.gradientRows.size() * 2;
     drawCalls = 0;
+    directCompatible = true;
     primitiveBounds.resize(view.primitives.size());
     for (std::size_t i = 0; i < view.primitives.size(); ++i) {
         const auto &d = view.primitives[i];
+        directCompatible = directCompatible && d.kind() != render::PrimitiveKind::wavetable3d &&
+                           d.kind() != render::PrimitiveKind::glyphLcd &&
+                           d.blend() != hal::BlendMode::screen &&
+                           d.blend() != hal::BlendMode::multiply;
         const auto &t = view.transforms[d.transformId];
         float x0 = INFINITY, y0 = INFINITY, x1 = -INFINITY, y1 = -INFINITY;
         for (const float x : {d.bounds[0], d.bounds[2]}) {
@@ -424,7 +431,7 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
                              static_cast<std::int32_t>(extent.height)};
     const auto &view = request.view;
     damageRects.clear();
-    if (recoverDamage || !view.effects.empty()) {
+    if (recoverDamage || !backingValid || !view.effects.empty()) {
         damageRects.push_back(viewport);
     } else {
         request.damage->forEachRect([&](hal::Rect rect) {
@@ -579,5 +586,7 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
         }
         effects.bloom(*device, commands, color, output, *request.bloom);
     }
+    backingValid = drawable == nil;
+    return drawable;
 }
 }

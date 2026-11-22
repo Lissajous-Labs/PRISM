@@ -1,3 +1,4 @@
+#include "../support/ReferenceScene.h"
 #include "backends/metal/MetalState.h"
 #include "backends/metal/MetalUpload.h"
 #include "math/ColorSpace.h"
@@ -71,6 +72,9 @@ int main() {
                     return 1;
                 }
             }
+        }
+        if (not checkDirectColor(device)) {
+            return 1;
         }
         std::cout << "Display P3 presentation preserves primaries, premultiplied alpha and HDR\n";
     }

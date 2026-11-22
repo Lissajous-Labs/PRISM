@@ -387,5 +387,5 @@ vertex PathCompositeOut pathCompositeVertex(uint vertexId [[vertex_id]],
     constant BatchPath &path = paths[in.path];
     uint2 local = uint2(in.position.xy + frame.origin) - uint2(path.uniforms.origin.xy) * 16u;
     float coverage = float(path.coverage[local.y * path.uniforms.columns * 16u + local.x]);
-    return decodeColor(path.uniforms.color) * coverage;
+    return outputColor(decodeColor(path.uniforms.color) * coverage, frame.outputColorSpace);
 }

@@ -32,7 +32,7 @@ struct FrameUniforms {
     float2 viewport;
     uint maxDepth;
     uint textureCount;
-    uint countFragments;
+    uint outputColorSpace;
     uint indexed;
     float2 origin;
 };

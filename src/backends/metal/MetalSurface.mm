@@ -131,10 +131,11 @@ bool MetalSurface::submit(const render::FrameRequest &request, void *layer, doub
         state_->uploadFrame(request.view);
         *static_cast<std::uint32_t *>(state_->counter.contents) = 0;
         id<MTLCommandBuffer> commands = [state_->queue commandBuffer];
-        state_->encodeFrame(commands, request);
         CAMetalLayer *target = (__bridge CAMetalLayer *)layer;
-        id<CAMetalDrawable> drawable =
-            target != nil ? encodePresentation(*state_, commands, target) : nil;
+        id<CAMetalDrawable> drawable = state_->encodeFrame(commands, request, target);
+        if (drawable == nil && target != nil) {
+            drawable = encodePresentation(*state_, commands, target);
+        }
         state_->commands = commands;
         state_->fenceValue = ++state_->frameNumber;
         [commands encodeSignalEvent:state_->completed value:state_->fenceValue];
@@ -156,7 +157,7 @@ bool MetalSurface::submit(const render::FrameRequest &request, void *layer, doub
 bool MetalSurface::readback(std::span<float> rgba) {
     const std::size_t pixels =
         static_cast<std::size_t>(state_->extent.width) * state_->extent.height;
-    if (state_->lost || rgba.size() != pixels * 4) {
+    if (state_->lost || !state_->backingValid || rgba.size() != pixels * 4) {
         return false;
     }
     @autoreleasepool {
@@ -191,7 +192,7 @@ bool MetalSurface::readback(std::span<float> rgba) {
 bool MetalSurface::readbackPresented(std::span<std::uint8_t> rgba, std::uint32_t frame) {
     const std::size_t pixels =
         static_cast<std::size_t>(state_->extent.width) * state_->extent.height;
-    if (state_->lost || rgba.size() != pixels * 4) {
+    if (state_->lost || !state_->backingValid || rgba.size() != pixels * 4) {
         return false;
     }
     @autoreleasepool {

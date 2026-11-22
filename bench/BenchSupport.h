@@ -42,12 +42,14 @@ class Stopwatch {
 
 void countAllocations(bool enabled) noexcept;
 [[nodiscard]] std::size_t allocationCount() noexcept;
+[[nodiscard]] std::size_t systemAllocationCount() noexcept;
 
 class Report {
   public:
     explicit Report(std::string_view workload) : workload_(workload) {}
 
     void distribution(std::string_view name, telemetry::FrameStatistics &statistics);
+    void value(std::string_view name, double value);
     bool below(std::string_view name, double value, double limit);
     bool atLeast(std::string_view name, double value, double limit);
     [[nodiscard]] int finish() const;

@@ -184,7 +184,7 @@ int runWorkbench() {
     constexpr int measuredFrames = 10000;
     telemetry::FrameStatistics host(measuredFrames), gpu(measuredFrames), frameTime(measuredFrames);
     std::vector<render::TextureView> textures;
-    std::size_t allocations = 0;
+    std::size_t allocations = 0, systemAllocations = 0;
     for (int frame = 0; frame < warmupFrames + measuredFrames; ++frame) {
         bench->telemetry(frame);
         const bool measured = frame >= warmupFrames;
@@ -203,6 +203,7 @@ int runWorkbench() {
         }
         const double encodeMs = encode.milliseconds();
         allocations += measured ? allocationCount() : 0;
+        systemAllocations += measured ? systemAllocationCount() : 0;
         countAllocations(false);
         context->surface->waitIdle();
         if (measured) {
@@ -219,7 +220,9 @@ int runWorkbench() {
     report.below("host encode Q99 ms", host.quantile(0.99), 0.6);
     report.below("completed frame Q99 ms for 120 Hz budget", frameTime.quantile(0.99),
                  1000.0 / 120);
-    report.below("heap allocations across 10000 frames", static_cast<double>(allocations), 1);
+    report.value("Metal and system framework heap allocations across 10000 frames",
+                 static_cast<double>(systemAllocations));
+    report.below("PRISM heap allocations across 10000 frames", static_cast<double>(allocations), 1);
     return report.finish();
 }
 }

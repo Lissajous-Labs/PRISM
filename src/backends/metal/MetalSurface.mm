@@ -54,7 +54,7 @@ std::uint32_t MetalSurface::lastFragmentCount() const noexcept {
 }
 double MetalSurface::lastGpuMilliseconds() const noexcept {
     state_->pollFrames();
-    return state_->gpuMilliseconds;
+    return state_->submitted ? state_->gpuMilliseconds : 0;
 }
 std::uint32_t MetalSurface::lastDrawCalls() const noexcept { return state_->drawCalls; }
 std::size_t MetalSurface::lastUploadBytes() const noexcept { return state_->uploadBytes; }
@@ -122,9 +122,11 @@ bool MetalSurface::submit(const render::FrameRequest &request, void *layer, doub
     @autoreleasepool {
         auto &slot = state_->frames[state_->frameNumber % state_->frames.size()];
         if (slot.fenceValue > state_->completed.signaledValue) {
-            state_->submitted = false;
-            state_->recoverDamage = true;
-            return true;
+            [slot.commands waitUntilCompleted];
+            state_->pollFrames();
+            if (state_->lost) {
+                return false;
+            }
         }
 
         std::swap(static_cast<MetalFrameResources &>(*state_), slot);

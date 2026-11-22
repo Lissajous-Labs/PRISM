@@ -263,5 +263,5 @@ fragment float4 wavetable3dFragment(WavetableVertex in [[stage_in]],
         }
     }
     FrameBuffers frame; frame.primitives = primitives; frame.payload = payload; frame.transforms = transforms; frame.clips = clips;
-    return result * clipCoverage(frame, d.clipId, pixel);
+    return outputColor(result * clipCoverage(frame, d.clipId, pixel), uniforms.outputColorSpace);
 }

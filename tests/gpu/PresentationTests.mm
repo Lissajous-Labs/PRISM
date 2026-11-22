@@ -28,6 +28,12 @@ bool checkDirectColor(const std::shared_ptr<prism::backends::MetalDeviceState> &
     }
     for (std::size_t i = 0; i < colors.size(); ++i) {
         const auto &c = colors[i];
+        const float x = static_cast<float>(i * 16);
+        list.texturedQuad(render::PrimitiveKind::glyphLcd, {x, 0, x + 16, 16}, {0, 0, 1, 1}, 0,
+                          render::packColor(c[0], c[1], c[2], c[3]));
+    }
+    for (std::size_t i = 0; i < colors.size(); ++i) {
+        const auto &c = colors[i];
         const double x = static_cast<double>(i * 16);
         render::VectorPath path;
         path.moveTo({x, 0});
@@ -57,12 +63,37 @@ bool checkDirectColor(const std::shared_ptr<prism::backends::MetalDeviceState> &
     descriptor.storageMode = MTLStorageModeShared;
     descriptor.usage = MTLTextureUsageRenderTarget;
     id<MTLTexture> target = [device.device newTextureWithDescriptor:descriptor];
+    MTLTextureDescriptor *lcdDescriptor =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+                                                           width:1
+                                                          height:1
+                                                       mipmapped:NO];
+    lcdDescriptor.storageMode = MTLStorageModeShared;
+    lcdDescriptor.usage = MTLTextureUsageShaderRead;
+    id<MTLTexture> lcd = [device.device newTextureWithDescriptor:lcdDescriptor];
+    const std::array<float, 4> lcdChannels{0.2f, 0.5f, 0.8f, 1};
+    [lcd replaceRegion:MTLRegionMake2D(0, 0, 1, 1)
+           mipmapLevel:0
+             withBytes:lcdChannels.data()
+           bytesPerRow:sizeof(lcdChannels)];
+    constexpr std::array<double, 4> backdrop{0.0625, 0.125, 0.25, 0.5};
+    const auto backdropP3 = math::toDisplayP3({backdrop[0], backdrop[1], backdrop[2]});
     const backends::FrameUniforms uniforms{{128, 16}, 16, 0, 1, 0, {0, 0}};
     const std::array pipelines{
-        device.opaque, device.countingCore,
+        device.opaque,
+        device.countingCore,
         device.pipelines[static_cast<std::size_t>(render::UberPipeline::sourceOver)],
-        device.counting, device.pathComposite};
+        device.counting,
+        device.pathComposite,
+        device.pipelines[static_cast<std::size_t>(render::UberPipeline::screen)],
+        device.pipelines[static_cast<std::size_t>(render::UberPipeline::multiply)],
+        device.pipelines[static_cast<std::size_t>(render::UberPipeline::subpixel)]};
     for (const auto &pipeline : pipelines) {
+        if (not device.programmableBlending and &pipeline >= pipelines.data() + 5) {
+            continue;
+        }
+        const bool subpixel =
+            pipeline == device.pipelines[static_cast<std::size_t>(render::UberPipeline::subpixel)];
         id<MTLCommandBuffer> commands = [device.queue commandBuffer];
         state.paths.prepare(device, commands, test::viewOf(list), state.extent, state.transforms,
                             state.clips);
@@ -70,7 +101,8 @@ bool checkDirectColor(const std::shared_ptr<prism::backends::MetalDeviceState> &
         pass.colorAttachments[0].texture = target;
         pass.colorAttachments[0].loadAction = MTLLoadActionClear;
         pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
+        pass.colorAttachments[0].clearColor =
+            MTLClearColorMake(backdropP3.r, backdropP3.g, backdropP3.b, backdrop[3]);
         pass.depthAttachment.texture = state.depth;
         pass.depthAttachment.loadAction = MTLLoadActionClear;
         pass.depthAttachment.clearDepth = 1;
@@ -81,6 +113,8 @@ bool checkDirectColor(const std::shared_ptr<prism::backends::MetalDeviceState> &
         }
         [encoder setVertexBuffer:state.primitives offset:0 atIndex:0];
         [encoder setFragmentBuffer:state.primitives offset:0 atIndex:0];
+        [encoder setVertexBuffer:state.payload offset:0 atIndex:1];
+        [encoder setFragmentBuffer:state.payload offset:0 atIndex:1];
         [encoder setVertexBuffer:state.transforms offset:0 atIndex:2];
         [encoder setFragmentBuffer:state.transforms offset:0 atIndex:2];
         [encoder setVertexBuffer:state.indices offset:0 atIndex:5];
@@ -89,6 +123,7 @@ bool checkDirectColor(const std::shared_ptr<prism::backends::MetalDeviceState> &
         for (NSUInteger index = 0; index < 25; ++index) {
             [encoder setFragmentTexture:device.emptyTexture atIndex:index];
         }
+        [encoder setFragmentTexture:lcd atIndex:1];
         [encoder setRenderPipelineState:pipeline];
         [encoder setDepthStencilState:device.depthTest];
         if (pipeline == device.pathComposite) {
@@ -99,7 +134,8 @@ bool checkDirectColor(const std::shared_ptr<prism::backends::MetalDeviceState> &
             [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                         vertexStart:0
                         vertexCount:6
-                      instanceCount:colors.size()];
+                      instanceCount:colors.size()
+                       baseInstance:subpixel ? colors.size() : 0];
         }
         [encoder endEncoding];
         [commands commit];
@@ -114,10 +150,44 @@ bool checkDirectColor(const std::shared_ptr<prism::backends::MetalDeviceState> &
              mipmapLevel:0];
         for (std::size_t i = 0; i < colors.size(); ++i) {
             const auto &c = colors[i];
-            const double alpha = c[3] / 255.0;
-            const auto expected = math::toDisplayP3({math::srgbDecode(c[0] / 255.0) * alpha,
-                                                     math::srgbDecode(c[1] / 255.0) * alpha,
-                                                     math::srgbDecode(c[2] / 255.0) * alpha});
+            double alpha = c[3] / 255.0;
+            std::array<double, 3> source{math::srgbDecode(c[0] / 255.0) * alpha,
+                                         math::srgbDecode(c[1] / 255.0) * alpha,
+                                         math::srgbDecode(c[2] / 255.0) * alpha};
+            std::array<double, 3> coverage{alpha, alpha, alpha};
+            if (subpixel) {
+                const double luminance =
+                    alpha == 0
+                        ? 0
+                        : (source[0] * 0.2126 + source[1] * 0.7152 + source[2] * 0.0722) / alpha;
+                const double beta = 0.28 * (1 - 2 * std::pow(luminance, 1 / 2.2));
+                for (std::size_t channel = 0; channel < source.size(); ++channel) {
+                    const double k =
+                        lcdChannels[channel] * (1 + beta) / (1 + beta * lcdChannels[channel]);
+                    source[channel] *= k;
+                    coverage[channel] *= k;
+                }
+                alpha = (coverage[0] + coverage[1] + coverage[2]) / 3;
+            }
+            const bool replace = pipeline == device.opaque or pipeline == device.countingCore;
+            const bool screen =
+                pipeline ==
+                device.pipelines[static_cast<std::size_t>(render::UberPipeline::screen)];
+            const bool multiply =
+                pipeline ==
+                device.pipelines[static_cast<std::size_t>(render::UberPipeline::multiply)];
+            for (std::size_t channel = 0; channel < source.size(); ++channel) {
+                const double s = source[channel], d = backdrop[channel];
+                source[channel] = replace    ? s
+                                  : screen   ? s + d - s * d
+                                  : multiply ? s * d + (1 - backdrop[3]) * s + (1 - alpha) * d
+                                  : subpixel ? s + (1 - coverage[channel]) * d
+                                             : s + (1 - alpha) * d;
+            }
+            if (not replace) {
+                alpha += backdrop[3] * (1 - alpha);
+            }
+            const auto expected = math::toDisplayP3({source[0], source[1], source[2]});
             const std::array channels{expected.r, expected.g, expected.b, alpha};
             for (std::size_t channel = 0; channel < channels.size(); ++channel) {
                 const auto value =

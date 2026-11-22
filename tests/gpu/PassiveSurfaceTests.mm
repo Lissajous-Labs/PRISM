@@ -3,6 +3,7 @@
 #include "host/HostComponent.h"
 
 #import <AppKit/AppKit.h>
+#import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
 #include <iostream>
@@ -116,7 +117,16 @@ bool checkDirectRecovery(host::HostComponent &component, backends::MetalDevice &
         std::cerr << "Nonlinear blend did not preserve linear-sRGB backing semantics\n";
         return false;
     }
-    std::cout << "Native direct frames, partial recovery and nonlinear fallback passed\n";
+    if (!component.renderFrame(test::viewOf(list), nullptr, clear)) {
+        return false;
+    }
+    surface.waitIdle();
+    const bool programmable = [MTLCreateSystemDefaultDevice() supportsFamily:MTLGPUFamilyApple1];
+    if (surface.readback(actual) == programmable) {
+        std::cerr << "Full nonlinear frame selected the wrong presentation path\n";
+        return false;
+    }
+    std::cout << "Native direct frames, partial recovery and nonlinear blending passed\n";
     return true;
 }
 }

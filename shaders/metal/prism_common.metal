@@ -126,6 +126,15 @@ float4 outputColor(float4 color, uint colorSpace) {
                   dot(color.rgb, float3(0.01708263f, 0.07239744f, 0.91051993f)), color.a);
 }
 
+float4 sceneColor(float4 color, uint colorSpace) {
+    if (colorSpace == 0u) {
+        return color;
+    }
+    return float4(dot(color.rgb, float3(1.22494018f, -0.22494018f, 0.0f)),
+                  dot(color.rgb, float3(-0.04205695f, 1.04205695f, 0.0f)),
+                  dot(color.rgb, float3(-0.01963755f, -0.07863605f, 1.09827360f)), color.a);
+}
+
 float boxCoverage(float distance, float2 normal) {
     float ax = abs(normal.x);
     float ay = abs(normal.y);

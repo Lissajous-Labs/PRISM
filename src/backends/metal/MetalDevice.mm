@@ -13,7 +13,7 @@ id<MTLFunction> function(id<MTLLibrary> library, const char *name) {
 }
 
 void configureBlend(MTLRenderPipelineColorAttachmentDescriptor *attachment,
-                    render::UberPipeline pipeline) {
+                    render::UberPipeline pipeline, bool programmable) {
     attachment.pixelFormat = colorFormat;
     attachment.blendingEnabled = YES;
     attachment.rgbBlendOperation = MTLBlendOperationAdd;
@@ -21,6 +21,11 @@ void configureBlend(MTLRenderPipelineColorAttachmentDescriptor *attachment,
     attachment.sourceRGBBlendFactor = MTLBlendFactorOne;
     attachment.sourceAlphaBlendFactor = MTLBlendFactorOne;
     attachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    if (programmable &&
+        (pipeline == render::UberPipeline::screen || pipeline == render::UberPipeline::subpixel)) {
+        attachment.blendingEnabled = NO;
+        return;
+    }
     switch (pipeline) {
     case render::UberPipeline::sourceOver:
     case render::UberPipeline::analytic:
@@ -46,7 +51,7 @@ void configureBlend(MTLRenderPipelineColorAttachmentDescriptor *attachment,
 
 id<MTLRenderPipelineState> buildPipeline(id<MTLDevice> device, id<MTLLibrary> library,
                                          const char *vertexName, const char *fragmentName,
-                                         render::UberPipeline blend) {
+                                         render::UberPipeline blend, bool programmable = false) {
     MTLRenderPipelineDescriptor *descriptor = [MTLRenderPipelineDescriptor new];
     descriptor.vertexFunction = function(library, vertexName);
     MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
@@ -59,7 +64,7 @@ id<MTLRenderPipelineState> buildPipeline(id<MTLDevice> device, id<MTLLibrary> li
                       constantValues:constants
                                error:nil];
     descriptor.depthAttachmentPixelFormat = depthFormat;
-    configureBlend(descriptor.colorAttachments[0], blend);
+    configureBlend(descriptor.colorAttachments[0], blend, programmable);
     NSError *error = nil;
     id<MTLRenderPipelineState> state = [device newRenderPipelineStateWithDescriptor:descriptor
                                                                               error:&error];
@@ -73,12 +78,14 @@ id<MTLDepthStencilState> depthState(id<MTLDevice> device, MTLCompareFunction com
     return [device newDepthStencilStateWithDescriptor:descriptor];
 }
 
-const char *fragmentFor(render::UberPipeline pipeline) {
+const char *fragmentFor(render::UberPipeline pipeline, bool programmable) {
     switch (pipeline) {
+    case render::UberPipeline::screen:
+        return programmable ? "uberScreenFragment" : "uberFragment";
     case render::UberPipeline::multiply:
         return "uberMultiplyFragment";
     case render::UberPipeline::subpixel:
-        return "uberLcdFragment";
+        return programmable ? "uberLcdBlendFragment" : "uberLcdFragment";
     default:
         return "uberFragment";
     }
@@ -122,7 +129,8 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
             continue;
         }
         state->pipelines[i] = buildPipeline(state->device, state->library, "uberVertex",
-                                            fragmentFor(pipeline), pipeline);
+                                            fragmentFor(pipeline, state->programmableBlending),
+                                            pipeline, state->programmableBlending);
         if (state->pipelines[i] == nil) {
             return nullptr;
         }

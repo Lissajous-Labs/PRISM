@@ -85,10 +85,7 @@ ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives,
     frame.shadowSprites = shadowSprites;
     PrimitiveDesc d = primitives[in.primitive];
     uint slot = d.auxHandle == noTexture ? 0u : min(d.auxHandle, 23u);
-    ShadeOut result =
-        shadePrimitive(frame, d, gradients, textures[slot], in.position.xy + uniforms.origin);
-    result.color = outputColor(result.color, uniforms.outputColorSpace);
-    return result;
+    return shadePrimitive(frame, d, gradients, textures[slot], in.position.xy + uniforms.origin);
 }
 
 [[early_fragment_tests]] fragment float4 uberCoreFragment(VertexOut in [[stage_in]],
@@ -108,9 +105,10 @@ ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives,
     device const float *shadowSprites [[buffer(9)]], texture2d<float> gradients [[texture(0)]],
     array<texture2d<float>, 24> textures [[texture(1)]],
     constant FrameUniforms &uniforms [[buffer(4)]]) {
-    return shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, shadowTable,
-                         shadowSprites, gradients, textures, uniforms)
-        .color;
+    return outputColor(shadeFragment(in, primitives, payload, transforms, clips, halftoneCells,
+                                     shadowTable, shadowSprites, gradients, textures, uniforms)
+                           .color,
+                       uniforms.outputColorSpace);
 }
 
 [[early_fragment_tests]] fragment float4 uberCountingFragment(
@@ -124,9 +122,10 @@ ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives,
     array<texture2d<float>, 24> textures [[texture(1)]],
     constant FrameUniforms &uniforms [[buffer(4)]]) {
     atomic_fetch_add_explicit(counter, 1u, memory_order_relaxed);
-    return shadeFragment(in, primitives, payload, transforms, clips, halftoneCells, shadowTable,
-                         shadowSprites, gradients, textures, uniforms)
-        .color;
+    return outputColor(shadeFragment(in, primitives, payload, transforms, clips, halftoneCells,
+                                     shadowTable, shadowSprites, gradients, textures, uniforms)
+                           .color,
+                       uniforms.outputColorSpace);
 }
 
 [[early_fragment_tests]] fragment float4 uberMultiplyFragment(
@@ -141,9 +140,29 @@ ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives,
     float4 source = shadeFragment(in, primitives, payload, transforms, clips, halftoneCells,
                                   shadowTable, shadowSprites, gradients, textures, uniforms)
                         .color;
+    destination = sceneColor(destination, uniforms.outputColorSpace);
     float3 rgb = source.rgb * destination.rgb + (1.0f - destination.a) * source.rgb +
                  (1.0f - source.a) * destination.rgb;
-    return float4(rgb, source.a + destination.a * (1.0f - source.a));
+    return outputColor(float4(rgb, source.a + destination.a * (1.0f - source.a)),
+                       uniforms.outputColorSpace);
+}
+
+[[early_fragment_tests]] fragment float4 uberScreenFragment(
+    VertexOut in [[stage_in]], float4 destination [[color(0)]],
+    device const PrimitiveDesc *primitives [[buffer(0)]], device const float *payload [[buffer(1)]],
+    device const TransformRecord *transforms [[buffer(2)]],
+    device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
+    device const ShadowSprite *shadowTable [[buffer(8)]],
+    device const float *shadowSprites [[buffer(9)]], texture2d<float> gradients [[texture(0)]],
+    array<texture2d<float>, 24> textures [[texture(1)]],
+    constant FrameUniforms &uniforms [[buffer(4)]]) {
+    float4 source = shadeFragment(in, primitives, payload, transforms, clips, halftoneCells,
+                                  shadowTable, shadowSprites, gradients, textures, uniforms)
+                        .color;
+    destination = sceneColor(destination, uniforms.outputColorSpace);
+    float3 rgb = source.rgb + destination.rgb - source.rgb * destination.rgb;
+    return outputColor(float4(rgb, source.a + destination.a * (1.0f - source.a)),
+                       uniforms.outputColorSpace);
 }
 
 [[early_fragment_tests]] fragment LcdOut uberLcdFragment(
@@ -161,6 +180,23 @@ ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives,
     out.color = shaded.color;
     out.coverage = float4(shaded.coverage, shaded.color.a);
     return out;
+}
+
+[[early_fragment_tests]] fragment float4 uberLcdBlendFragment(
+    VertexOut in [[stage_in]], float4 destination [[color(0)]],
+    device const PrimitiveDesc *primitives [[buffer(0)]], device const float *payload [[buffer(1)]],
+    device const TransformRecord *transforms [[buffer(2)]],
+    device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
+    device const ShadowSprite *shadowTable [[buffer(8)]],
+    device const float *shadowSprites [[buffer(9)]], texture2d<float> gradients [[texture(0)]],
+    array<texture2d<float>, 24> textures [[texture(1)]],
+    constant FrameUniforms &uniforms [[buffer(4)]]) {
+    ShadeOut source = shadeFragment(in, primitives, payload, transforms, clips, halftoneCells,
+                                    shadowTable, shadowSprites, gradients, textures, uniforms);
+    destination = sceneColor(destination, uniforms.outputColorSpace);
+    float3 rgb = source.color.rgb + (1.0f - source.coverage) * destination.rgb;
+    return outputColor(float4(rgb, source.color.a + destination.a * (1.0f - source.color.a)),
+                       uniforms.outputColorSpace);
 }
 
 struct ClearOut {

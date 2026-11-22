@@ -242,10 +242,10 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
     primitiveBounds.resize(view.primitives.size());
     for (std::size_t i = 0; i < view.primitives.size(); ++i) {
         const auto &d = view.primitives[i];
-        directCompatible = directCompatible && d.kind() != render::PrimitiveKind::wavetable3d &&
-                           d.kind() != render::PrimitiveKind::glyphLcd &&
-                           d.blend() != hal::BlendMode::screen &&
-                           d.blend() != hal::BlendMode::multiply;
+        directCompatible = directCompatible && (device->programmableBlending ||
+                                                (d.kind() != render::PrimitiveKind::glyphLcd &&
+                                                 d.blend() != hal::BlendMode::screen &&
+                                                 d.blend() != hal::BlendMode::multiply));
         const auto &t = view.transforms[d.transformId];
         float x0 = INFINITY, y0 = INFINITY, x1 = -INFINITY, y1 = -INFINITY;
         for (const float x : {d.bounds[0], d.bounds[2]}) {

@@ -14,6 +14,8 @@ bool PassiveSurfaceHost::attach(void *, PeerBounds) { return false; }
 void PassiveSurfaceHost::setBounds(PeerBounds) {}
 
 void PassiveSurfaceHost::setLiveResize(bool) {}
+bool PassiveSurfaceHost::startFrameClock(FrameTick, bool) { return false; }
+void PassiveSurfaceHost::stopFrameClock() {}
 
 void PassiveSurfaceHost::detach() {}
 

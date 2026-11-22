@@ -14,6 +14,11 @@ struct PeerBounds {
     double height;
 };
 
+struct FrameTick {
+    void (*function)(void *, double) = nullptr;
+    void *context = nullptr;
+};
+
 class PassiveSurfaceHost {
   public:
     PassiveSurfaceHost();
@@ -26,6 +31,8 @@ class PassiveSurfaceHost {
     [[nodiscard]] bool attach(void *peerView, PeerBounds bounds);
     void setBounds(PeerBounds bounds);
     void setLiveResize(bool active);
+    [[nodiscard]] bool startFrameClock(FrameTick tick, bool preferLegacy = false);
+    void stopFrameClock();
     void detach();
 
     [[nodiscard]] bool attached() const noexcept;

@@ -3,15 +3,108 @@
 #include "backends/metal/MetalBackend.h"
 
 #import <AppKit/AppKit.h>
+#import <CoreVideo/CoreVideo.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
 
+#include <atomic>
 #include <cmath>
 
-@interface PrismPassiveSurfaceView : NSView
+@interface PrismPassiveSurfaceView : NSView {
+    id displayLink_;
+    CVDisplayLinkRef legacyLink_;
+    CFRunLoopSourceRef source_;
+    std::atomic<double> timestamp_;
+    prism::host::FrameTick tick_;
+}
+- (BOOL)startFrameClock:(prism::host::FrameTick)tick legacy:(BOOL)legacy;
+- (void)stopFrameClock;
+- (void)deliverFrame:(double)timestamp;
 @end
 
 @implementation PrismPassiveSurfaceView
+
+- (void)deliverFrame:(double)timestamp {
+    const auto tick = tick_;
+    if (tick.function != nullptr && self.window != nil && !self.hiddenOrHasHiddenAncestor) {
+        tick.function(tick.context, timestamp);
+    }
+}
+
+- (void)displayTick:(CADisplayLink *)link API_AVAILABLE(macos(14.0)) {
+    [self deliverFrame:link.targetTimestamp];
+}
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+- (BOOL)startFrameClock:(prism::host::FrameTick)tick legacy:(BOOL)legacy {
+    [self stopFrameClock];
+    if (tick.function == nullptr || self.window == nil) {
+        return NO;
+    }
+    tick_ = tick;
+    if (@available(macOS 14.0, *)) {
+        if (!legacy) {
+            CADisplayLink *link = [self displayLinkWithTarget:self
+                                                     selector:@selector(displayTick:)];
+            link.preferredFrameRateRange = CAFrameRateRangeMake(60, 120, 120);
+            displayLink_ = link;
+            [link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+            return YES;
+        }
+    }
+
+    CFRunLoopSourceContext context{};
+    context.info = (__bridge void *)self;
+    context.perform = [](void *info) {
+        PrismPassiveSurfaceView *view = (__bridge PrismPassiveSurfaceView *)info;
+        [view deliverFrame:view->timestamp_.load(std::memory_order_acquire)];
+    };
+    source_ = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &context);
+    NSNumber *number = self.window.screen.deviceDescription[@"NSScreenNumber"];
+    if (source_ == nullptr || number == nil ||
+        CVDisplayLinkCreateWithCGDisplay([number unsignedIntValue], &legacyLink_) !=
+            kCVReturnSuccess) {
+        [self stopFrameClock];
+        return NO;
+    }
+    CFRunLoopAddSource(CFRunLoopGetMain(), source_, kCFRunLoopCommonModes);
+    const auto callback = [](CVDisplayLinkRef, const CVTimeStamp *, const CVTimeStamp *output,
+                             CVOptionFlags, CVOptionFlags *, void *info) -> CVReturn {
+        PrismPassiveSurfaceView *view = (__bridge PrismPassiveSurfaceView *)info;
+        const double seconds = static_cast<double>(output->hostTime) / CVGetHostClockFrequency();
+        view->timestamp_.store(seconds, std::memory_order_release);
+        CFRunLoopSourceSignal(view->source_);
+        CFRunLoopWakeUp(CFRunLoopGetMain());
+        return kCVReturnSuccess;
+    };
+    if (CVDisplayLinkSetOutputCallback(legacyLink_, callback, (__bridge void *)self) !=
+            kCVReturnSuccess ||
+        CVDisplayLinkStart(legacyLink_) != kCVReturnSuccess) {
+        [self stopFrameClock];
+        return NO;
+    }
+    return YES;
+}
+
+- (void)stopFrameClock {
+    if (@available(macOS 14.0, *)) {
+        [(CADisplayLink *)displayLink_ invalidate];
+    }
+    displayLink_ = nil;
+    if (legacyLink_ != nullptr) {
+        CVDisplayLinkStop(legacyLink_);
+        CVDisplayLinkRelease(legacyLink_);
+        legacyLink_ = nullptr;
+    }
+    if (source_ != nullptr) {
+        CFRunLoopSourceInvalidate(source_);
+        CFRelease(source_);
+        source_ = nullptr;
+    }
+    tick_ = {};
+}
+#pragma clang diagnostic pop
 
 - (instancetype)initWithFrame:(NSRect)frame {
     self = [super initWithFrame:frame];
@@ -130,11 +223,19 @@ void PassiveSurfaceHost::setLiveResize(bool active) {
     }
 }
 
+bool PassiveSurfaceHost::startFrameClock(FrameTick tick, bool preferLegacy) {
+    return [NSThread isMainThread] && impl_->view != nil &&
+           [impl_->view startFrameClock:tick legacy:preferLegacy];
+}
+
+void PassiveSurfaceHost::stopFrameClock() { [impl_->view stopFrameClock]; }
+
 void PassiveSurfaceHost::detach() {
     if (impl_->view == nil) {
         return;
     }
     @autoreleasepool {
+        stopFrameClock();
         [impl_->view removeFromSuperview];
         impl_->view = nil;
     }

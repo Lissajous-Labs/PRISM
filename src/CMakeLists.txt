@@ -132,7 +132,7 @@ if(APPLE)
         host/PassiveSurfaceHost_mac.mm
         host/ProcessorState.cpp
     )
-    target_link_libraries(prism_host PUBLIC prism_backend_metal prism_layout "-framework AppKit" "-framework QuartzCore")
+    target_link_libraries(prism_host PUBLIC prism_backend_metal prism_layout "-framework AppKit" "-framework QuartzCore" "-framework CoreVideo")
     target_compile_options(prism_host PRIVATE -fobjc-arc)
 else()
     add_library(prism_host STATIC

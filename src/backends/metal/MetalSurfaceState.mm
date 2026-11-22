@@ -1,10 +1,11 @@
 #include "backends/metal/MetalSurfaceState.h"
+#include "backends/metal/MetalSpectrogram.h"
 #include "backends/metal/MetalUpload.h"
 #include "backends/metal/MetalWavetable3d.h"
 
 namespace prism::backends {
 void MetalSurfaceState::createTargets() {
-    queue = [device->device newCommandQueue];
+    queue = device->queue;
     completed = [device->device newSharedEvent];
     frameNumber = 0;
     measuredFrame = 0;
@@ -394,6 +395,17 @@ void MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands,
         counting ? 1u : 0u,
         0,
         {0, 0}};
+    for (auto *spectrogram : device->spectrograms) {
+        const auto field = spectrogram->field().nativeTexture;
+        const auto integral = spectrogram->integral().nativeTexture;
+        const bool sampled = std::ranges::any_of(request.view.textures, [&](const auto &texture) {
+            return texture.nativeTexture != nullptr &&
+                   (texture.nativeTexture == field || texture.nativeTexture == integral);
+        });
+        if (sampled) {
+            static_cast<void>(spectrogram->encode((__bridge void *)commands));
+        }
+    }
     formants.encode(*device, commands, primitives, payload, transforms);
     halftones.encode(*device, commands, primitives, payload, gradients, textures);
     shadows.encode(*device, commands);

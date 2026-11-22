@@ -29,7 +29,6 @@ id<MTLTexture> texture(id<MTLDevice> device, MTLPixelFormat format, std::size_t 
 }
 struct MetalSpectrogram::Impl {
     std::shared_ptr<MetalDeviceState> device;
-    id<MTLCommandQueue> queue;
     id<MTLComputePipelineState> fft, prefixRows, prefixColumns;
     id<MTLTexture> source, field, integral;
     std::uint32_t frames, period, rows;
@@ -53,7 +52,9 @@ MetalSpectrogram::MetalSpectrogram(std::shared_ptr<MetalDeviceState> device,
         s.period = static_cast<std::uint32_t>(table.period);
         s.rows = rows;
         auto gpu = s.device->device;
-        s.queue = [gpu newCommandQueue];
+        if (not s.device->queue) {
+            throw std::runtime_error("Cannot access shared Metal command queue");
+        }
         const auto pipeline = [&](NSString *name) {
             return [gpu
                 newComputePipelineStateWithFunction:[s.device->library newFunctionWithName:name]
@@ -65,25 +66,26 @@ MetalSpectrogram::MetalSpectrogram(std::shared_ptr<MetalDeviceState> device,
         s.source = texture(gpu, MTLPixelFormatR32Float, s.period, s.frames, false);
         s.field = texture(gpu, MTLPixelFormatR16Float, s.frames, s.rows, true);
         s.integral = texture(gpu, MTLPixelFormatR32Float, s.frames + 1, s.rows + 1, true);
-        if (!s.queue || !s.fft || !s.prefixRows || !s.prefixColumns || !s.source || !s.field ||
-            !s.integral) {
+        if (!s.fft || !s.prefixRows || !s.prefixColumns || !s.source || !s.field || !s.integral) {
             throw std::runtime_error("Cannot create Metal spectral compute resources");
         }
         [s.source replaceRegion:MTLRegionMake2D(0, 0, s.period, s.frames)
                     mipmapLevel:0
                       withBytes:table.samples.data()
                     bytesPerRow:s.period * sizeof(float)];
+        s.device->spectrograms.push_back(this);
     }
 }
-MetalSpectrogram::~MetalSpectrogram() = default;
+MetalSpectrogram::~MetalSpectrogram() { std::erase(impl_->device->spectrograms, this); }
 bool MetalSpectrogram::prepare(const math::WavetableWarp &warp, float tilt,
                                std::uint32_t firstFrame, std::uint32_t count) noexcept {
     auto &s = *impl_;
+    const bool pending = s.pendingFrames != 0;
     s.pendingFrames = 0;
     if (firstFrame >= s.frames || count == 0) {
         return false;
     }
-    if (!s.ready) {
+    if (!s.ready || pending) {
         firstFrame = 0;
         count = s.frames;
     }
@@ -110,13 +112,28 @@ bool MetalSpectrogram::prepare(const math::WavetableWarp &warp, float tilt,
 bool MetalSpectrogram::dispatch() {
     @autoreleasepool {
         auto &s = *impl_;
-        if (s.pendingFrames == 0) {
+        auto commands = [s.device->queue commandBuffer];
+        if (!encode((__bridge void *)commands)) {
+            return false;
+        }
+        [commands commit];
+        [commands waitUntilCompleted];
+        s.milliseconds = (commands.GPUEndTime - commands.GPUStartTime) * 1000;
+        s.ready = commands.status == MTLCommandBufferStatusCompleted;
+        return s.ready;
+    }
+}
+
+bool MetalSpectrogram::encode(void *commandBuffer) {
+    @autoreleasepool {
+        auto &s = *impl_;
+        if (s.pendingFrames == 0 || commandBuffer == nullptr) {
             return false;
         }
         const auto &u = s.uniforms;
         const auto count = s.pendingFrames;
         s.pendingFrames = 0;
-        auto commands = [s.queue commandBuffer];
+        auto commands = (__bridge id<MTLCommandBuffer>)commandBuffer;
         auto encoder = [commands computeCommandEncoder];
         [encoder setComputePipelineState:s.fft];
         [encoder setTexture:s.source atIndex:0];
@@ -144,34 +161,31 @@ bool MetalSpectrogram::dispatch() {
                                                       std::bit_ceil(s.rows)),
                                                   1, 1)];
         [encoder endEncoding];
-        [commands commit];
-        [commands waitUntilCompleted];
-        s.milliseconds = (commands.GPUEndTime - commands.GPUStartTime) * 1000;
-        s.ready = commands.status == MTLCommandBufferStatusCompleted;
-        return s.ready;
+        s.ready = true;
+        return true;
     }
 }
 render::TextureView MetalSpectrogram::field() const noexcept {
     const auto &s = *impl_;
-    return s.ready ? render::TextureView{s.frames,
-                                         s.rows,
-                                         1,
-                                         {},
-                                         hal::PixelFormat::r16Float,
-                                         0,
-                                         (__bridge void *)s.field}
-                   : render::TextureView{};
+    return s.ready || s.pendingFrames != 0 ? render::TextureView{s.frames,
+                                                                 s.rows,
+                                                                 1,
+                                                                 {},
+                                                                 hal::PixelFormat::r16Float,
+                                                                 0,
+                                                                 (__bridge void *)s.field}
+                                           : render::TextureView{};
 }
 render::TextureView MetalSpectrogram::integral() const noexcept {
     const auto &s = *impl_;
-    return s.ready ? render::TextureView{s.frames + 1,
-                                         s.rows + 1,
-                                         1,
-                                         {},
-                                         hal::PixelFormat::rg32Float,
-                                         0,
-                                         (__bridge void *)s.integral}
-                   : render::TextureView{};
+    return s.ready || s.pendingFrames != 0 ? render::TextureView{s.frames + 1,
+                                                                 s.rows + 1,
+                                                                 1,
+                                                                 {},
+                                                                 hal::PixelFormat::rg32Float,
+                                                                 0,
+                                                                 (__bridge void *)s.integral}
+                                           : render::TextureView{};
 }
 double MetalSpectrogram::lastGpuMilliseconds() const noexcept { return impl_->milliseconds; }
 }

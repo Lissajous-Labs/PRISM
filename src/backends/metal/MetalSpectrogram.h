@@ -22,6 +22,8 @@ class MetalSpectrogram {
     [[nodiscard]] double lastGpuMilliseconds() const noexcept;
 
   private:
+    friend struct MetalSurfaceState;
+    bool encode(void *commandBuffer);
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

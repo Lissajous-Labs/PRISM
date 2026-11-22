@@ -91,6 +91,10 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
     if (state->device == nil) {
         return nullptr;
     }
+    state->queue = [state->device newCommandQueue];
+    if (state->queue == nil) {
+        return nullptr;
+    }
     const auto source = render::metalShaderSource();
     NSString *text = [[NSString alloc] initWithBytes:source.data()
                                               length:source.size()

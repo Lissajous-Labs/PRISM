@@ -38,10 +38,18 @@ int main() {
     warp.bend = 0.2;
     warp.quantization = 8;
     warp.amplitudeModulation = 0.2;
-    for (int scenario = 0; scenario < 2; ++scenario) {
-        const math::WavetableWarp selected = scenario == 0 ? math::WavetableWarp{} : warp;
-        if (!reference.build(table, selected) || !native->prepare(selected) ||
-            !native->dispatch()) {
+    for (int scenario = 0; scenario < 4; ++scenario) {
+        const math::WavetableWarp selected = scenario % 2 == 0 ? math::WavetableWarp{} : warp;
+        if (scenario == 2) {
+            native = metal.createSpectrogram(table, rows);
+        }
+        if (scenario >= 2 && !native->prepare(selected, 0.25f, 3, 1)) {
+            return 1;
+        }
+        const bool prepared =
+            scenario < 2 ? native->prepare(selected) : native->prepare(selected, 0.25f, 7, 1);
+        if (!reference.build(table, selected) || !prepared ||
+            (scenario < 2 && !native->dispatch())) {
             return 1;
         }
         render::DrawList list;

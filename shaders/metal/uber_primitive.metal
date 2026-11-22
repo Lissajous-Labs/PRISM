@@ -81,11 +81,11 @@ ShadeOut shadeFragment(VertexOut in, device const PrimitiveDesc *primitives, dev
     return shadePrimitive(frame, d, gradients, textures[slot], in.position.xy + uniforms.origin);
 }
 
-fragment float4 uberCoreFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]]) {
+[[early_fragment_tests]] fragment float4 uberCoreFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]]) {
     return decodeColor(primitives[in.primitive].color);
 }
 
-fragment float4 uberFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]],
+[[early_fragment_tests]] fragment float4 uberFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]],
                              device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
                              device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
                              device const ShadowSprite *shadowTable [[buffer(8)]], device const float *shadowSprites [[buffer(9)]],
@@ -108,7 +108,7 @@ fragment float4 uberFragment(VertexOut in [[stage_in]], device const PrimitiveDe
                          gradients, textures, uniforms).color;
 }
 
-fragment float4 uberMultiplyFragment(VertexOut in [[stage_in]], float4 destination [[color(0)]],
+[[early_fragment_tests]] fragment float4 uberMultiplyFragment(VertexOut in [[stage_in]], float4 destination [[color(0)]],
                                      device const PrimitiveDesc *primitives [[buffer(0)]],
                                      device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
                                      device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
@@ -121,7 +121,7 @@ fragment float4 uberMultiplyFragment(VertexOut in [[stage_in]], float4 destinati
     return float4(rgb, source.a + destination.a * (1.0f - source.a));
 }
 
-fragment LcdOut uberLcdFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]],
+[[early_fragment_tests]] fragment LcdOut uberLcdFragment(VertexOut in [[stage_in]], device const PrimitiveDesc *primitives [[buffer(0)]],
                                 device const float *payload [[buffer(1)]], device const TransformRecord *transforms [[buffer(2)]],
                                 device const ClipRecord *clips [[buffer(3)]], device const float4 *halftoneCells [[buffer(7)]],
                                 device const ShadowSprite *shadowTable [[buffer(8)]], device const float *shadowSprites [[buffer(9)]],

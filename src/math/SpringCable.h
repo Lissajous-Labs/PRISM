@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Spring.h"
 #include "Vector2.h"
 
 #include <array>
@@ -7,19 +8,6 @@
 #include <cstddef>
 
 namespace prism::math {
-struct SpringState {
-    double position;
-    double velocity;
-};
-
-[[nodiscard]] inline SpringState criticalSpringStep(SpringState state, double target, double omega,
-                                                    double dt) noexcept {
-    const double c1 = state.position - target;
-    const double c2 = state.velocity + omega * c1;
-    const double decay = std::exp(-omega * dt);
-    return {target + (c1 + c2 * dt) * decay, (c2 - omega * (c1 + c2 * dt)) * decay};
-}
-
 template <std::size_t Points>
     requires(Points >= 2)
 class VerletCable {

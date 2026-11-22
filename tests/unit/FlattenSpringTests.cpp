@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <numbers>
 
 namespace {
@@ -59,20 +60,66 @@ bool checkFlattening(prism::test::Pcg &random) {
 bool checkSpring() {
     SpringState stepped{10, -3};
     for (int i = 0; i < 240; ++i) {
-        stepped = criticalSpringStep(stepped, 2, 12, 1.0 / 240);
+        stepped = springStep(stepped, 2, {12}, 1.0 / 240);
     }
-    const auto direct = criticalSpringStep({10, -3}, 2, 12, 1);
+    const auto direct = springStep({10, -3}, 2, {12}, 1);
     SpringState rest{0, 0};
     bool monotonic = true;
     double previous = 0;
     for (int i = 0; i < 600; ++i) {
-        rest = criticalSpringStep(rest, 1, 20, 1.0 / 120);
+        rest = springStep(rest, 1, {20}, 1.0 / 120);
         monotonic = monotonic && rest.position >= previous && rest.position <= 1;
         previous = rest.position;
     }
     return std::abs(stepped.position - direct.position) < 1e-12 &&
            std::abs(stepped.velocity - direct.velocity) < 1e-10 && monotonic &&
            std::abs(rest.position - 1) < 1e-9;
+}
+
+bool checkFrameRateInvariance() {
+    double worst = 0;
+    for (const double zeta : {0.0, 0.65, 0.999999, 1.0, 1.000001, 1.45, 4.0}) {
+        const SpringParameters spring{42, zeta};
+        const auto exact = springStep({0, 0}, 1, spring, 0.5);
+        for (const double rate : {60.0, 120.0, 240.0}) {
+            SpringState state{0, 0};
+            for (int i = 0; i < static_cast<int>(rate / 2); ++i) {
+                state = springStep(state, 1, spring, 1 / rate);
+            }
+            worst = std::max(worst, std::abs(state.position - exact.position));
+        }
+        SpringState variable{0, 0};
+        double elapsed = 0;
+        for (int i = 0; elapsed < 0.5; ++i) {
+            const double dt = std::min(0.5 - elapsed, (i % 3 == 0 ? 1.0 / 60 : 1.0 / 144));
+            variable = springStep(variable, 1, spring, dt);
+            elapsed += dt;
+        }
+        worst = std::max(worst, std::abs(variable.position - exact.position));
+    }
+    std::cout << "Spring semigroup deviation across 60/120/240 Hz and VRR: " << worst << '\n';
+    return worst < 1e-7;
+}
+
+bool checkSettling() {
+    const double canonical = criticalSettlingTime(1, 0.01);
+    const double drawer = criticalSettlingTime(42, 0.01);
+    const double residual = std::exp(-canonical) * (1 + canonical) - 0.01;
+    const auto ninety = [] {
+        double low = 0, high = 1;
+        for (int i = 0; i < 200; ++i) {
+            const double mid = (low + high) / 2;
+            (springStep({0, 0}, 1, {42}, mid).position < 0.9 ? low : high) = mid;
+        }
+        return low;
+    }();
+    const auto snapped =
+        springStep({0.3, 4}, 1, {std::numeric_limits<double>::infinity()}, 1.0 / 120);
+    std::cout << "Critical 1% settling: " << canonical << " / omega, drawer " << drawer * 1000
+              << " ms, 90% at " << ninety * 1000 << " ms\n";
+    return std::abs(canonical - 6.63835) < 5e-6 && std::abs(residual) < 1e-14 &&
+           std::abs(drawer - 0.158056) < 1e-5 && std::abs(ninety - 0.0924) < 5e-4 &&
+           snapped.position == 1 && snapped.velocity == 0;
 }
 
 bool checkCable() {
@@ -96,7 +143,8 @@ bool checkCable() {
 
 int main() {
     prism::test::Pcg random(41);
-    if (!checkFlattening(random) || !checkSpring() || !checkCable()) {
+    if (!checkFlattening(random) || !checkSpring() || !checkFrameRateInvariance() ||
+        !checkSettling() || !checkCable()) {
         std::cerr << "Flattening and spring contract failed\n";
         return 1;
     }

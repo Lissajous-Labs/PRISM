@@ -1,7 +1,7 @@
 #pragma once
 
 #include "math/Bitset64.h"
-#include "math/SpringCable.h"
+#include "math/Spring.h"
 
 #include <array>
 #include <cmath>
@@ -14,14 +14,14 @@ template <std::size_t Capacity> class AnimationClock {
     static constexpr double settleVelocity = 1e-3;
 
     void set(std::size_t id, double value) noexcept {
-        springs_[id] = {{value, 0}, value, springs_[id].omega};
+        springs_[id] = {{value, 0}, value, springs_[id].parameters};
         active_.reset(id);
     }
 
-    void animate(std::size_t id, double target, double omega) noexcept {
+    void animate(std::size_t id, double target, double omega, double zeta = 1) noexcept {
         Spring &spring = springs_[id];
         spring.target = target;
-        spring.omega = omega;
+        spring.parameters = {omega, zeta};
         active_.set(id);
     }
 
@@ -29,7 +29,7 @@ template <std::size_t Capacity> class AnimationClock {
         std::size_t visited = 0;
         active_.forEach([&](std::size_t id) {
             Spring &spring = springs_[id];
-            spring.state = math::criticalSpringStep(spring.state, spring.target, spring.omega, dt);
+            spring.state = math::springStep(spring.state, spring.target, spring.parameters, dt);
             if (std::abs(spring.state.position - spring.target) < settleDistance &&
                 std::abs(spring.state.velocity) < settleVelocity) {
                 spring.state = {spring.target, 0};
@@ -57,7 +57,7 @@ template <std::size_t Capacity> class AnimationClock {
     struct Spring {
         math::SpringState state{0, 0};
         double target = 0;
-        double omega = 1;
+        math::SpringParameters parameters{1, 1};
     };
 
     std::array<Spring, Capacity> springs_{};

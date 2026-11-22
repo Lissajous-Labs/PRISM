@@ -141,9 +141,8 @@ bool checkAnimationClock() {
     std::size_t visited = clock->step(1.0 / 120, [](std::size_t, double) {});
     bool sparse = visited == 3;
     const math::SpringState start{0.4, -2};
-    const auto whole = math::criticalSpringStep(start, 1, 9, 0.05);
-    const auto halves =
-        math::criticalSpringStep(math::criticalSpringStep(start, 1, 9, 0.025), 1, 9, 0.025);
+    const auto whole = math::springStep(start, 1, {9}, 0.05);
+    const auto halves = math::springStep(math::springStep(start, 1, {9}, 0.025), 1, {9}, 0.025);
     const bool exact = std::abs(whole.position - halves.position) < 1e-12 &&
                        std::abs(whole.velocity - halves.velocity) < 1e-12;
     int frames = 0;

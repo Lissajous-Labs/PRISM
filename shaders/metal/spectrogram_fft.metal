@@ -49,7 +49,7 @@ kernel void spectrogramFft(texture2d<float, access::read> table [[texture(0)]],
                            uint tid [[thread_index_in_threadgroup]],
                            uint group [[threadgroup_position_in_grid]],
                            uint threads [[threads_per_threadgroup]]) {
-    threadgroup float2 work[2048];
+    threadgroup float2 work[1024];
     threadgroup float2 twiddle[1024];
     uint frame = u.first + group;
     uint half_ = u.period / 2u;
@@ -58,15 +58,16 @@ kernel void spectrogramFft(texture2d<float, access::read> table [[texture(0)]],
         float sine = precise::sincos(-2.0f * M_PI_F * float(i) / float(u.period), cosine);
         twiddle[i] = float2(cosine, sine);
     }
-    for (uint i = tid; i < u.period; i += threads) {
-        uint reversed = u.bits == 0u ? 0u : reverse_bits(i) >> (32u - u.bits);
-        work[reversed] = float2(spectralWarp(table, frame, i, u), 0.0f);
+    for (uint i = tid; i < half_; i += threads) {
+        uint reversed = reverse_bits(i) >> (33u - u.bits);
+        work[reversed] = float2(spectralWarp(table, frame, 2u * i, u),
+                                spectralWarp(table, frame, 2u * i + 1u, u));
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint level = 0; level < u.bits; ++level) {
+    for (uint level = 0; level + 1u < u.bits; ++level) {
         uint halfSize = 1u << level;
         uint stride = u.bits - 1u - level;
-        for (uint i = tid; i < half_; i += threads) {
+        for (uint i = tid; i < half_ / 2u; i += threads) {
             uint k = i & (halfSize - 1u), start = (i >> level) << (level + 1u);
             float2 w = twiddle[k << stride];
             float2 a = work[start + k], b = work[start + k + halfSize];
@@ -84,7 +85,14 @@ kernel void spectrogramFft(texture2d<float, access::read> table [[texture(0)]],
         float power = 0.0f;
         for (uint k = first; k <= last; ++k) {
             float overlap = max(0.0f, min(k1, float(k) + 0.5f) - max(k0, float(k) - 0.5f));
-            power += overlap * dot(work[k], work[k]) * 4.0f / float(u.period * u.period) *
+            float2 evenOdd = work[k];
+            float2 paired = float2(work[half_ - k].x, -work[half_ - k].y);
+            float2 difference = evenOdd - paired;
+            float2 w = twiddle[k];
+            float2 rotated = float2(w.x * difference.x - w.y * difference.y,
+                                    w.x * difference.y + w.y * difference.x);
+            float2 bin = 0.5f * (evenOdd + paired + float2(rotated.y, -rotated.x));
+            power += overlap * dot(bin, bin) * 4.0f / float(u.period * u.period) *
                      pow(float(k), 2.0f * u.tilt);
         }
         power /= k1 - k0 + 1.0f;

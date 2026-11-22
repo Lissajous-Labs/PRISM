@@ -152,7 +152,7 @@ bool MetalSpectrogram::encode(void *commandBuffer) {
         [encoder setTexture:s.field atIndex:1];
         [encoder setBytes:&u length:sizeof(u) atIndex:0];
         const auto threads = std::min<NSUInteger>(s.fft.maxTotalThreadsPerThreadgroup,
-                                                  std::max<std::uint32_t>(s.period / 2, 32));
+                                                  std::max<std::uint32_t>(s.period / 4, 32));
         [encoder dispatchThreadgroups:MTLSizeMake(count, 1, 1)
                 threadsPerThreadgroup:MTLSizeMake(threads, 1, 1)];
         [encoder memoryBarrierWithScope:MTLBarrierScopeTextures];

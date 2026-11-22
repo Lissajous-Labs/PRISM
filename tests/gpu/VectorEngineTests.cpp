@@ -84,6 +84,65 @@ int main() {
         worst = std::max(worst, static_cast<double>(std::abs(expected[i] - actual[i])));
     }
 
+    list.clear();
+    list.fillPath(wide, render::packColor(255, 255, 255, 255), render::FillRule::evenOdd);
+    for (unsigned i = 0; i < 64; ++i) {
+        render::VectorPath path;
+        const double x = static_cast<double>(i % 8) * 64 - 12.25;
+        const double y = static_cast<double>(i / 8) * 32 - 9.75;
+        path.moveTo({x, y});
+        path.lineTo({x + 1.5 + (i % 8) * 5.75, y + 2.25});
+        path.lineTo({x + 10.125, y + 7.75 + (i % 5) * 4.25});
+        path.close();
+        list.fillPath(path, render::packColor(80, 160, 240, 127),
+                      i % 2 ? render::FillRule::evenOdd : render::FillRule::nonZero);
+        if (i % 5 == 0) {
+            list.roundedRect({50, 40, 70, 55}, {}, render::packColor(220, 40, 90, 255));
+        }
+    }
+    const auto batchExpected = test::renderFull(reference, test::viewOf(list));
+    const auto batchActual = test::renderFull(*gpu, test::viewOf(list));
+    if (batchExpected.empty() or batchActual.empty()) {
+        return 1;
+    }
+    for (std::size_t i = 0; i < batchExpected.size(); ++i) {
+        worst = std::max(worst, static_cast<double>(std::abs(batchExpected[i] - batchActual[i])));
+    }
+
+    list.clear();
+    for (unsigned i = 0; i < 64; ++i) {
+        render::VectorPath path;
+        const double x = static_cast<double>((i * 43) % 520) - 12.25;
+        const double y = static_cast<double>((i * 29) % 270) - 9.75;
+        path.moveTo({x, y});
+        path.lineTo({x + 1.5 + i * 3.75, y + 2.25});
+        path.lineTo({x + 10.125, y + 7.75 + i * 2.25});
+        path.close();
+        list.fillPath(path, render::packColor(static_cast<std::uint8_t>(i * 3), 160, 240, 127));
+        if (i % 5 == 0) {
+            list.roundedRect({50, 40, 70, 55}, {}, render::packColor(220, 40, 90, 128));
+        }
+    }
+    const auto layeredExpected = test::renderFull(reference, test::viewOf(list));
+    const auto layeredActual = test::renderFull(*gpu, test::viewOf(list));
+    if (layeredExpected.empty() or layeredActual.empty()) {
+        return 1;
+    }
+    double squaredError = 0, squaredReference = 0;
+    for (std::size_t i = 0; i < layeredExpected.size(); ++i) {
+        if (i % 4 == 3) {
+            continue;
+        }
+        const double error = static_cast<double>(layeredExpected[i]) - layeredActual[i];
+        squaredError += error * error;
+        squaredReference += static_cast<double>(layeredExpected[i]) * layeredExpected[i];
+    }
+    const double relativeRms = std::sqrt(squaredError / squaredReference);
+    std::cout << "Layered half-float vector relative RGB RMS: " << relativeRms << '\n';
+    if (not std::isfinite(relativeRms) or relativeRms >= 0.0065) {
+        return 1;
+    }
+
     std::cout << "GPU vector coverage worst difference: " << worst << '\n';
     if (worst >= 1e-3) {
         std::cerr << "GPU vector engine contract failed\n";

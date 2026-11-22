@@ -11,6 +11,13 @@
 #include <vector>
 
 namespace prism::backends {
+struct MetalPathBatch {
+    std::array<std::uint32_t, 16> uniforms;
+    std::array<std::uint64_t, 8> buffers;
+};
+
+static_assert(sizeof(MetalPathBatch) == 128);
+
 struct MetalPathBuffers {
     id<MTLBuffer> segments = nil;
     id<MTLBuffer> counts = nil;
@@ -44,7 +51,8 @@ class MetalPathEngine {
 
   private:
     std::vector<MetalPathBuffers> buffers_;
-    std::vector<float> segmentScratch_;
+    std::vector<MetalPathBatch> batchRecords_;
+    id<MTLBuffer> batchBuffer_ = nil;
     render::TileGrid grid_{0, 0};
 };
 }

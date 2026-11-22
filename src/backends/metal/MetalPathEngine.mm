@@ -70,6 +70,8 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
         buffers_.resize(frame.paths.size());
     }
     id<MTLDevice> gpu = device.device;
+    batchRecords_.resize(frame.paths.size());
+    std::uint32_t maxSegments = 1, maxRows = 1, maxPartitions = 1;
     for (std::size_t i = 0; i < frame.paths.size(); ++i) {
         const auto &draw = frame.paths[i];
         const auto segments = frame.pathSegments.subspan(draw.firstSegment, draw.segmentCount);
@@ -107,7 +109,18 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
 
         upload(gpu, b.pieces, nullptr, pieces * 8);
         upload(gpu, b.scanState, nullptr, ((tiles + scanPartition - 1) / scanPartition + 1) * 4);
+        const auto uniforms = uniformsFor(b, draw);
+        auto &record = batchRecords_[i];
+        std::memcpy(record.uniforms.data(), &uniforms, sizeof(uniforms));
+        record.buffers = {b.segments.gpuAddress, b.counts.gpuAddress,    b.rowDeltas.gpuAddress,
+                          b.offsets.gpuAddress,  b.scanState.gpuAddress, b.backdrops.gpuAddress,
+                          b.cursors.gpuAddress,  b.pieces.gpuAddress};
+        maxSegments = std::max(maxSegments, draw.segmentCount);
+        maxRows = std::max(maxRows, b.rows);
+        maxPartitions =
+            std::max(maxPartitions, (uniforms.tileCount + scanPartition - 1) / scanPartition);
     }
+    upload(gpu, batchBuffer_, batchRecords_.data(), batchRecords_.size() * sizeof(MetalPathBatch));
     id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
     for (std::size_t i = 0; i < frame.paths.size(); ++i) {
         const MetalPathBuffers &b = buffers_[i];
@@ -119,41 +132,31 @@ void MetalPathEngine::prepare(MetalDeviceState &device, id<MTLCommandBuffer> com
     }
     [blit endEncoding];
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+    [encoder setBuffer:batchBuffer_ offset:0 atIndex:0];
     for (std::size_t i = 0; i < frame.paths.size(); ++i) {
-        const auto &draw = frame.paths[i];
-        const MetalPathBuffers &b = buffers_[i];
-        const PathUniforms uniforms = uniformsFor(b, draw);
-        [encoder setComputePipelineState:device.pathBinCount];
-        [encoder setBuffer:b.segments offset:0 atIndex:0];
-        [encoder setBytes:&uniforms length:sizeof(uniforms) atIndex:1];
-        [encoder setBuffer:b.counts offset:0 atIndex:2];
-        [encoder setBuffer:b.rowDeltas offset:0 atIndex:3];
-        [encoder dispatchThreads:MTLSizeMake(std::max<std::uint32_t>(draw.segmentCount, 1), 1, 1)
-            threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
-        [encoder setComputePipelineState:device.pathScan];
-        [encoder setBuffer:b.counts offset:0 atIndex:0];
-        [encoder setBuffer:b.offsets offset:0 atIndex:1];
-        [encoder setBytes:&uniforms length:sizeof(uniforms) atIndex:2];
-        [encoder setBuffer:b.scanState offset:0 atIndex:3];
-        [encoder dispatchThreadgroups:MTLSizeMake((uniforms.tileCount + scanPartition - 1) /
-                                                      scanPartition,
-                                                  1, 1)
-                threadsPerThreadgroup:MTLSizeMake(scanPartition, 1, 1)];
-        [encoder setComputePipelineState:device.pathBackdrop];
-        [encoder setBuffer:b.rowDeltas offset:0 atIndex:0];
-        [encoder setBuffer:b.backdrops offset:0 atIndex:1];
-        [encoder setBytes:&uniforms length:sizeof(uniforms) atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(b.rows, 1, 1)
-            threadsPerThreadgroup:MTLSizeMake(32, 1, 1)];
-        [encoder setComputePipelineState:device.pathScatter];
-        [encoder setBuffer:b.segments offset:0 atIndex:0];
-        [encoder setBytes:&uniforms length:sizeof(uniforms) atIndex:1];
-        [encoder setBuffer:b.offsets offset:0 atIndex:2];
-        [encoder setBuffer:b.cursors offset:0 atIndex:3];
-        [encoder setBuffer:b.pieces offset:0 atIndex:4];
-        [encoder dispatchThreads:MTLSizeMake(std::max<std::uint32_t>(draw.segmentCount, 1), 1, 1)
-            threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+        const auto &b = buffers_[i];
+        [encoder useResource:b.segments usage:MTLResourceUsageRead];
+        for (id<MTLBuffer> buffer :
+             {b.counts, b.rowDeltas, b.offsets, b.scanState, b.backdrops, b.cursors, b.pieces}) {
+            [encoder useResource:buffer usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+        }
     }
+    const auto paths = frame.paths.size();
+    [encoder setComputePipelineState:device.pathBinCount];
+    [encoder dispatchThreads:MTLSizeMake(maxSegments, paths, 1)
+        threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+    [encoder memoryBarrierWithScope:MTLBarrierScopeBuffers];
+    [encoder setComputePipelineState:device.pathBatchScan];
+    [encoder dispatchThreadgroups:MTLSizeMake(maxPartitions, paths, 1)
+            threadsPerThreadgroup:MTLSizeMake(scanPartition, 1, 1)];
+    [encoder memoryBarrierWithScope:MTLBarrierScopeBuffers];
+    [encoder setComputePipelineState:device.pathBackdrop];
+    [encoder dispatchThreads:MTLSizeMake(maxRows, paths, 1)
+        threadsPerThreadgroup:MTLSizeMake(32, 1, 1)];
+    [encoder memoryBarrierWithScope:MTLBarrierScopeBuffers];
+    [encoder setComputePipelineState:device.pathScatter];
+    [encoder dispatchThreads:MTLSizeMake(maxSegments, paths, 1)
+        threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
     [encoder endEncoding];
 }
 

@@ -161,6 +161,7 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
                                                                            error:&error];
     state->pathBinCount = compute("pathBinCount");
     state->pathScan = compute("pathScan");
+    state->pathBatchScan = compute("pathBatchScan");
     state->pathBackdrop = compute("pathBackdrop");
     state->pathScatter = compute("pathScatter");
     state->pathFine = compute("pathFine");

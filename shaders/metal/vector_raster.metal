@@ -16,6 +16,18 @@ struct PathUniforms {
     int4 origin;
 };
 
+struct BatchPath {
+    PathUniforms uniforms;
+    device const float4 *segments;
+    device atomic_uint *counts;
+    device atomic_int *rowDeltas;
+    device uint *offsets;
+    device atomic_uint *scanState;
+    device int *backdrops;
+    device atomic_uint *cursors;
+    device uint2 *pieces;
+};
+
 uint quantizeLocal(float value) {
     return uint(rint(clamp(value, 0.0f, pathTile) * pieceScale));
 }
@@ -117,9 +129,14 @@ void visitBoundarySteps(float4 s, constant PathUniforms &u, thread PieceSink &si
     }
 }
 
-kernel void pathBinCount(device const float4 *segments [[buffer(0)]], constant PathUniforms &u [[buffer(1)]],
-                         device atomic_uint *counts [[buffer(2)]], device atomic_int *rowDeltas [[buffer(3)]],
-                         uint index [[thread_position_in_grid]]) {
+kernel void pathBinCount(constant BatchPath *paths [[buffer(0)]],
+                         uint2 position [[thread_position_in_grid]]) {
+    constant BatchPath &path = paths[position.y];
+    constant PathUniforms &u = path.uniforms;
+    uint index = position.x;
+    device const float4 *segments = path.segments;
+    device atomic_uint *counts = path.counts;
+    device atomic_int *rowDeltas = path.rowDeltas;
     if (index >= u.segmentCount) {
         return;
     }
@@ -149,15 +166,9 @@ kernel void pathBinCount(device const float4 *segments [[buffer(0)]], constant P
     }
 }
 
-kernel void pathScan(device const uint *counts [[buffer(0)]], device uint *offsets [[buffer(1)]],
-                     constant PathUniforms &u [[buffer(2)]], device atomic_uint *state [[buffer(3)]],
-                     uint local [[thread_position_in_threadgroup]],
-                     uint lane [[thread_index_in_simdgroup]],
-                     uint simdGroup [[simdgroup_index_in_threadgroup]],
-                     uint simdWidth [[threads_per_simdgroup]]) {
-    threadgroup uint partition;
-    threadgroup uint sums[scanPartition];
-    threadgroup uint prefix;
+void scanPath(device const uint *counts, device uint *offsets, constant PathUniforms &u,
+              device atomic_uint *state, uint local, uint lane, uint simdGroup, uint simdWidth,
+              threadgroup uint &partition, threadgroup uint *sums, threadgroup uint &prefix) {
     if (local == 0) {
         partition = atomic_fetch_add_explicit(&state[0], 1u, memory_order_relaxed);
     }
@@ -216,8 +227,42 @@ kernel void pathScan(device const uint *counts [[buffer(0)]], device uint *offse
     }
 }
 
-kernel void pathBackdrop(device const int *rowDeltas [[buffer(0)]], device int *backdrops [[buffer(1)]],
-                         constant PathUniforms &u [[buffer(2)]], uint row [[thread_position_in_grid]]) {
+kernel void pathScan(device const uint *counts [[buffer(0)]], device uint *offsets [[buffer(1)]],
+                     constant PathUniforms &u [[buffer(2)]], device atomic_uint *state [[buffer(3)]],
+                     uint local [[thread_position_in_threadgroup]],
+                     uint lane [[thread_index_in_simdgroup]],
+                     uint simdGroup [[simdgroup_index_in_threadgroup]],
+                     uint simdWidth [[threads_per_simdgroup]]) {
+    threadgroup uint partition;
+    threadgroup uint sums[scanPartition];
+    threadgroup uint prefix;
+    scanPath(counts, offsets, u, state, local, lane, simdGroup, simdWidth, partition, sums, prefix);
+}
+
+kernel void pathBatchScan(constant BatchPath *paths [[buffer(0)]],
+                          uint2 group [[threadgroup_position_in_grid]],
+                          uint2 local [[thread_position_in_threadgroup]],
+                          uint lane [[thread_index_in_simdgroup]],
+                          uint simdGroup [[simdgroup_index_in_threadgroup]],
+                          uint simdWidth [[threads_per_simdgroup]]) {
+    constant BatchPath &path = paths[group.y];
+    if (group.x >= (path.uniforms.tileCount + scanPartition - 1) / scanPartition) {
+        return;
+    }
+    threadgroup uint partition;
+    threadgroup uint sums[scanPartition];
+    threadgroup uint prefix;
+    scanPath(reinterpret_cast<device const uint *>(path.counts), path.offsets, path.uniforms,
+             path.scanState, local.x, lane, simdGroup, simdWidth, partition, sums, prefix);
+}
+
+kernel void pathBackdrop(constant BatchPath *paths [[buffer(0)]],
+                         uint2 position [[thread_position_in_grid]]) {
+    constant BatchPath &path = paths[position.y];
+    constant PathUniforms &u = path.uniforms;
+    uint row = position.x;
+    device const int *rowDeltas = reinterpret_cast<device const int *>(path.rowDeltas);
+    device int *backdrops = path.backdrops;
     if (row >= u.rows) {
         return;
     }
@@ -228,9 +273,15 @@ kernel void pathBackdrop(device const int *rowDeltas [[buffer(0)]], device int *
     }
 }
 
-kernel void pathScatter(device const float4 *segments [[buffer(0)]], constant PathUniforms &u [[buffer(1)]],
-                        device const uint *offsets [[buffer(2)]], device atomic_uint *cursors [[buffer(3)]],
-                        device uint2 *pieces [[buffer(4)]], uint index [[thread_position_in_grid]]) {
+kernel void pathScatter(constant BatchPath *paths [[buffer(0)]],
+                        uint2 position [[thread_position_in_grid]]) {
+    constant BatchPath &path = paths[position.y];
+    constant PathUniforms &u = path.uniforms;
+    uint index = position.x;
+    device const float4 *segments = path.segments;
+    device const uint *offsets = path.offsets;
+    device atomic_uint *cursors = path.cursors;
+    device uint2 *pieces = path.pieces;
     if (index >= u.segmentCount) {
         return;
     }

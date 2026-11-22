@@ -25,5 +25,9 @@ hal::Extent PassiveSurfaceHost::drawableExtent() const noexcept { return {0, 0};
 
 void *PassiveSurfaceHost::nativeView() const noexcept { return nullptr; }
 
-bool PassiveSurfaceHost::present(render::RenderSurface &) { return false; }
+bool PassiveSurfaceHost::renderFrame(render::RenderSurface &surface,
+                                     const render::FrameRequest &request, bool &presented) {
+    presented = false;
+    return surface.render(request);
+}
 }

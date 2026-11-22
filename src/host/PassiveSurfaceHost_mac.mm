@@ -156,11 +156,13 @@ hal::Extent PassiveSurfaceHost::drawableExtent() const noexcept {
 
 void *PassiveSurfaceHost::nativeView() const noexcept { return (__bridge void *)impl_->view; }
 
-bool PassiveSurfaceHost::present(render::RenderSurface &surface) {
+bool PassiveSurfaceHost::renderFrame(render::RenderSurface &surface,
+                                     const render::FrameRequest &request, bool &presented) {
+    presented = false;
     auto *metal = dynamic_cast<backends::MetalSurface *>(&surface);
     if (impl_->view == nil || metal == nullptr) {
         return false;
     }
-    return metal->presentToLayer((__bridge void *)impl_->view.layer);
+    return metal->renderToLayer(request, (__bridge void *)impl_->view.layer, presented);
 }
 }

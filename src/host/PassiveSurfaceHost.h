@@ -32,7 +32,8 @@ class PassiveSurfaceHost {
     [[nodiscard]] double contentsScale() const noexcept;
     [[nodiscard]] hal::Extent drawableExtent() const noexcept;
     [[nodiscard]] void *nativeView() const noexcept;
-    [[nodiscard]] bool present(render::RenderSurface &surface);
+    [[nodiscard]] bool renderFrame(render::RenderSurface &surface,
+                                   const render::FrameRequest &request, bool &presented);
 
   private:
     struct Impl;

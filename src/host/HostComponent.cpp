@@ -86,12 +86,17 @@ bool HostComponent::renderFrame(const render::FrameView &view, const hal::Damage
     if (region->empty()) {
         return true;
     }
-    if (!surface_->render({view, region, clear})) {
+    bool presented = false;
+    const render::FrameRequest request{view, region, clear};
+    const bool rendered = surfaceHost_.attached()
+                              ? surfaceHost_.renderFrame(*surface_, request, presented)
+                              : surface_->render(request);
+    if (!rendered) {
         lifecycle_.handle(SurfaceEvent::gpuFault);
         return false;
     }
     fullRedraw_ = false;
-    if (surfaceHost_.attached() && surfaceHost_.present(*surface_)) {
+    if (presented) {
         ++presented_;
     }
     return true;

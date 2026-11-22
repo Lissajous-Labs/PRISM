@@ -60,7 +60,52 @@ std::uint32_t MetalSurface::lastDrawCalls() const noexcept { return state_->draw
 std::size_t MetalSurface::lastUploadBytes() const noexcept { return state_->uploadBytes; }
 bool MetalSurface::lastSubmitted() const noexcept { return state_->submitted; }
 
+namespace {
+id<CAMetalDrawable> encodePresentation(MetalSurfaceState &state, id<MTLCommandBuffer> commands,
+                                       CAMetalLayer *target) {
+    if (target.device != state.device->device) {
+        target.device = state.device->device;
+    }
+    const CGSize size = CGSizeMake(state.extent.width, state.extent.height);
+    if (!CGSizeEqualToSize(target.drawableSize, size)) {
+        target.drawableSize = size;
+    }
+    id<CAMetalDrawable> drawable = [target nextDrawable];
+    if (drawable == nil) {
+        return nil;
+    }
+
+    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = drawable.texture;
+    pass.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
+    [encoder setRenderPipelineState:state.device->presentDrawable];
+    [encoder setFragmentTexture:state.presentedTexture() atIndex:0];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+    [encoder endEncoding];
+    ++state.drawCalls;
+    return drawable;
+}
+}
+
 bool MetalSurface::render(const render::FrameRequest &request) {
+    bool presented = false;
+    return submit(request, nullptr, presented);
+}
+
+bool MetalSurface::renderToLayer(const render::FrameRequest &request, void *layer,
+                                 bool &presented) {
+    if (layer == nullptr) {
+        presented = false;
+        return false;
+    }
+
+    return submit(request, layer, presented);
+}
+
+bool MetalSurface::submit(const render::FrameRequest &request, void *layer, bool &presented) {
+    presented = false;
     state_->pollFrames();
     if (state_->lost || request.damage == nullptr || state_->completed == nil) {
         return false;
@@ -86,11 +131,22 @@ bool MetalSurface::render(const render::FrameRequest &request) {
         *static_cast<std::uint32_t *>(state_->counter.contents) = 0;
         id<MTLCommandBuffer> commands = [state_->queue commandBuffer];
         state_->encodeFrame(commands, request);
+        CAMetalLayer *target = (__bridge CAMetalLayer *)layer;
+        id<CAMetalDrawable> drawable =
+            target != nil ? encodePresentation(*state_, commands, target) : nil;
         state_->commands = commands;
         state_->fenceValue = ++state_->frameNumber;
         [commands encodeSignalEvent:state_->completed value:state_->fenceValue];
+        if (drawable != nil && !target.presentsWithTransaction) {
+            [commands presentDrawable:drawable];
+        }
         std::swap(static_cast<MetalFrameResources &>(*state_), slot);
         [commands commit];
+        if (drawable != nil && target.presentsWithTransaction) {
+            [commands waitUntilScheduled];
+            [drawable present];
+        }
+        presented = drawable != nil;
     }
     return true;
 }
@@ -156,45 +212,6 @@ bool MetalSurface::readbackPresented(std::span<std::uint8_t> rgba, std::uint32_t
         std::memcpy(rgba.data(), state_->readback.contents, pixels * 4);
     }
     return true;
-}
-
-bool MetalSurface::presentToLayer(void *layer) {
-    if (state_->lost || layer == nullptr) {
-        return false;
-    }
-    @autoreleasepool {
-        CAMetalLayer *target = (__bridge CAMetalLayer *)layer;
-        if (target.device != state_->device->device) {
-            target.device = state_->device->device;
-        }
-        const CGSize size = CGSizeMake(state_->extent.width, state_->extent.height);
-        if (!CGSizeEqualToSize(target.drawableSize, size)) {
-            target.drawableSize = size;
-        }
-        id<CAMetalDrawable> drawable = [target nextDrawable];
-        if (drawable == nil) {
-            return false;
-        }
-        id<MTLCommandBuffer> commands = [state_->queue commandBuffer];
-        MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
-        pass.colorAttachments[0].texture = drawable.texture;
-        pass.colorAttachments[0].loadAction = MTLLoadActionDontCare;
-        pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-        id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
-        [encoder setRenderPipelineState:state_->device->presentDrawable];
-        [encoder setFragmentTexture:state_->presentedTexture() atIndex:0];
-        [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
-        [encoder endEncoding];
-        if (target.presentsWithTransaction) {
-            [commands commit];
-            [commands waitUntilScheduled];
-            [drawable present];
-        } else {
-            [commands presentDrawable:drawable];
-            [commands commit];
-        }
-        return commands.error == nil;
-    }
 }
 
 void MetalSurface::waitIdle() {

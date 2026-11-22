@@ -2,6 +2,8 @@
 
 #include "render/FrameRecords.h"
 
+#include <algorithm>
+
 namespace prism::render {
 namespace {
 bool compactShading(const PrimitiveDesc &desc) noexcept {
@@ -50,19 +52,19 @@ UberPipeline pipelineFor(const PrimitiveDesc &desc) noexcept {
 void UberBatches::build(std::span<const PrimitiveDesc> primitives, bool earlyDepth) {
     opaque_.clear();
     runs_.clear();
-    for (std::uint32_t i = static_cast<std::uint32_t>(primitives.size()); earlyDepth && i-- > 0;) {
-        if (primitives[i].has(flags::opaque)) {
+    for (std::uint32_t i = 0; i < primitives.size(); ++i) {
+        const PrimitiveDesc &desc = primitives[i];
+        if (earlyDepth && desc.has(flags::opaque)) {
             opaque_.push_back(i);
         }
-    }
-
-    for (std::uint32_t i = 0; i < primitives.size(); ++i) {
-        const UberPipeline pipeline = pipelineFor(primitives[i]);
+        const UberPipeline pipeline = pipelineFor(desc);
         if (!runs_.empty() && runs_.back().pipeline == pipeline) {
             ++runs_.back().count;
         } else {
             runs_.push_back({pipeline, i, 1});
         }
     }
+
+    std::reverse(opaque_.begin(), opaque_.end());
 }
 }

@@ -253,7 +253,15 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
     upload(gpu, payload, view.payload.data(), view.payload.size_bytes());
     upload(gpu, transforms, view.transforms.data(), view.transforms.size_bytes());
     upload(gpu, clips, view.clips.data(), view.clips.size_bytes());
-    shadows.prepare(*device, view, primitives);
+    std::uint32_t kinds = 0;
+    for (const render::PrimitiveDesc &d : view.primitives) {
+        kinds |= 1u << static_cast<std::uint32_t>(d.kind());
+    }
+    const auto present = [&](render::PrimitiveKind kind) {
+        return ((kinds >> static_cast<std::uint32_t>(kind)) & 1u) != 0;
+    };
+
+    shadows.prepare(*device, view, primitives, present(render::PrimitiveKind::boxShadow));
     batches.build(
         {static_cast<const render::PrimitiveDesc *>(primitives.contents), view.primitives.size()},
         earlyDepth && view.effects.empty());
@@ -295,10 +303,14 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
             textures[slot] = nil;
         }
     }
-    formants.prepare(*device, view, primitives, extent);
-    halftones.prepare(*device, view, primitives, payload);
+    formants.prepare(*device, view, primitives, extent,
+                     present(render::PrimitiveKind::formantCurve));
+    halftones.prepare(*device, view, primitives, payload,
+                      present(render::PrimitiveKind::halftoneField));
     wavetableLines.clear();
-    for (std::size_t i = 0; i < view.primitives.size(); ++i) {
+    const std::size_t wavetables =
+        present(render::PrimitiveKind::wavetable3d) ? view.primitives.size() : 0;
+    for (std::size_t i = 0; i < wavetables; ++i) {
         if (view.primitives[i].kind() == render::PrimitiveKind::wavetable3d) {
             render::WavetableLine line;
             if (render::wavetableActiveLine(view, view.primitives[i], line)) {

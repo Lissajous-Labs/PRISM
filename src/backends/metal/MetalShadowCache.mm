@@ -20,12 +20,13 @@ float largestScale(const render::TransformRecord &t) noexcept {
 }
 
 void MetalShadowCache::prepare(MetalDeviceState &device, const render::FrameView &frame,
-                               id<MTLBuffer> primitives) {
+                               id<MTLBuffer> primitives, bool present) {
     pending_.clear();
     bool stepsReady = false;
     std::size_t recent = 0;
     auto *gpuPrimitives = static_cast<render::PrimitiveDesc *>(primitives.contents);
-    for (std::size_t i = 0; i < frame.primitives.size(); ++i) {
+    const std::size_t scanned = present ? frame.primitives.size() : 0;
+    for (std::size_t i = 0; i < scanned; ++i) {
         const auto &d = frame.primitives[i];
         if (d.kind() != render::PrimitiveKind::boxShadow || d.has(render::flags::inset)) {
             continue;

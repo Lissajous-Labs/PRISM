@@ -19,8 +19,8 @@ struct ShadowSprite {
 
 class MetalShadowCache {
   public:
-    void prepare(MetalDeviceState &device, const render::FrameView &frame,
-                 id<MTLBuffer> primitives);
+    void prepare(MetalDeviceState &device, const render::FrameView &frame, id<MTLBuffer> primitives,
+                 bool present);
     void encode(MetalDeviceState &device, id<MTLCommandBuffer> commands);
     [[nodiscard]] id<MTLBuffer> sprites() const noexcept { return sprites_; }
     [[nodiscard]] id<MTLBuffer> table() const noexcept { return table_; }

@@ -4,10 +4,11 @@
 
 namespace prism::backends {
 void MetalFormantCache::prepare(MetalDeviceState &device, const render::FrameView &frame,
-                                id<MTLBuffer> primitives, hal::Extent extent) {
+                                id<MTLBuffer> primitives, hal::Extent extent, bool present) {
     count_ = 0;
     auto *gpuPrimitives = static_cast<render::PrimitiveDesc *>(primitives.contents);
-    for (std::size_t i = 0; i < frame.primitives.size() && count_ < entries_.size(); ++i) {
+    const std::size_t scanned = present ? frame.primitives.size() : 0;
+    for (std::size_t i = 0; i < scanned && count_ < entries_.size(); ++i) {
         const auto &d = frame.primitives[i];
         if (d.kind() != render::PrimitiveKind::formantCurve) {
             continue;

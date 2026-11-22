@@ -14,12 +14,13 @@ constexpr int cellMargin = 2;
 }
 
 void MetalHalftoneCache::prepare(MetalDeviceState &device, const render::FrameView &frame,
-                                 id<MTLBuffer> primitives, id<MTLBuffer> payload) {
+                                 id<MTLBuffer> primitives, id<MTLBuffer> payload, bool present) {
     jobs_.clear();
     auto *gpuPrimitives = static_cast<render::PrimitiveDesc *>(primitives.contents);
     auto *gpuPayload = static_cast<float *>(payload.contents);
     std::uint32_t total = 0;
-    for (std::size_t i = 0; i < frame.primitives.size(); ++i) {
+    const std::size_t scanned = present ? frame.primitives.size() : 0;
+    for (std::size_t i = 0; i < scanned; ++i) {
         const auto &d = frame.primitives[i];
         if (d.kind() != render::PrimitiveKind::halftoneField) {
             continue;

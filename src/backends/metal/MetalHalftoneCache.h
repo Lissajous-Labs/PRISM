@@ -11,7 +11,7 @@ namespace prism::backends {
 class MetalHalftoneCache {
   public:
     void prepare(MetalDeviceState &device, const render::FrameView &frame, id<MTLBuffer> primitives,
-                 id<MTLBuffer> payload);
+                 id<MTLBuffer> payload, bool present);
     void encode(MetalDeviceState &device, id<MTLCommandBuffer> commands, id<MTLBuffer> primitives,
                 id<MTLBuffer> payload, id<MTLTexture> gradients,
                 const std::array<id<MTLTexture>, textureSlots> &textures);

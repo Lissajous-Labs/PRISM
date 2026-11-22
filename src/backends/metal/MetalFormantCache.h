@@ -9,7 +9,7 @@ namespace prism::backends {
 class MetalFormantCache {
   public:
     void prepare(MetalDeviceState &device, const render::FrameView &frame, id<MTLBuffer> primitives,
-                 hal::Extent extent);
+                 hal::Extent extent, bool present);
     void encode(MetalDeviceState &device, id<MTLCommandBuffer> commands, id<MTLBuffer> primitives,
                 id<MTLBuffer> payload, id<MTLBuffer> transforms);
     [[nodiscard]] id<MTLTexture> texture(std::size_t slot) const noexcept {

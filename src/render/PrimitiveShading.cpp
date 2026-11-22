@@ -131,23 +131,22 @@ ShadeResult shadeTexture(const FrameView &frame, const PrimitiveDesc &desc,
     }
     const TextureView &texture = frame.textures[desc.auxHandle];
     const Vector2 uv = textureCoordinate(frame, desc, local);
-    const Texel texel = sampleBilinear(texture, uv.x, uv.y);
+    const Texel texel = sampleFiltered(texture, uv.x, uv.y);
     const auto color = detail::decodeColor(desc.color);
+    const float luminance =
+        math::foregroundLuminance(static_cast<float>(color.r), static_cast<float>(color.g),
+                                  static_cast<float>(color.b), static_cast<float>(color.a));
+    const float bias = desc.params[1] > 0
+                           ? math::polarityStemBias(desc.params[1], desc.params[2], luminance)
+                           : 0.0f;
     switch (desc.kind()) {
-    case PrimitiveKind::glyphAlpha: {
-        const float luminance =
-            math::foregroundLuminance(static_cast<float>(color.r), static_cast<float>(color.g),
-                                      static_cast<float>(color.b), static_cast<float>(color.a));
+    case PrimitiveKind::glyphAlpha:
         return solid(
-            detail::scale(color, math::stemDarkening(static_cast<float>(texel[0]), luminance)));
-    }
+            detail::scale(color, math::shiftedCoverage(static_cast<float>(texel[0]), bias)));
     case PrimitiveKind::glyphLcd: {
-        const float luminance =
-            math::foregroundLuminance(static_cast<float>(color.r), static_cast<float>(color.g),
-                                      static_cast<float>(color.b), static_cast<float>(color.a));
-        const double r = math::stemDarkening(static_cast<float>(texel[0]), luminance);
-        const double g = math::stemDarkening(static_cast<float>(texel[1]), luminance);
-        const double b = math::stemDarkening(static_cast<float>(texel[2]), luminance);
+        const double r = math::shiftedCoverage(static_cast<float>(texel[0]), bias);
+        const double g = math::shiftedCoverage(static_cast<float>(texel[1]), bias);
+        const double b = math::shiftedCoverage(static_cast<float>(texel[2]), bias);
         ShadeResult result{{color.r * r, color.g * g, color.b * b, color.a * (r + g + b) / 3},
                            {color.a * r, color.a * g, color.a * b},
                            true};
@@ -156,13 +155,20 @@ ShadeResult shadeTexture(const FrameView &frame, const PrimitiveDesc &desc,
     case PrimitiveKind::glyphMtsdf: {
         const double median = std::max(std::min(texel[0], texel[1]),
                                        std::min(std::max(texel[0], texel[1]), texel[2]));
-        const double quadWidth = std::hypot(transform.forward[0], transform.forward[1]) *
-                                 (desc.bounds[2] - desc.bounds[0]);
-        const double texelsAcross =
-            std::abs(frame.payload[desc.payloadOffset + 2] - frame.payload[desc.payloadOffset]) *
-            texture.width;
-        const double screenRange = desc.params[0] * quadWidth / std::max(texelsAcross, 1e-9);
-        return solid(detail::scale(color, math::boxCoverage((0.5 - median) * screenRange, {1, 0})));
+        const std::uint32_t uvOffset = desc.payloadOffset;
+        const double su = (frame.payload[uvOffset + 2] - frame.payload[uvOffset]) * texture.width /
+                          (desc.bounds[2] - desc.bounds[0]);
+        const double sv = (frame.payload[uvOffset + 3] - frame.payload[uvOffset + 1]) *
+                          texture.height / (desc.bounds[3] - desc.bounds[1]);
+        const double j00 = su * transform.inverse[0];
+        const double j01 = su * transform.inverse[2];
+        const double j10 = sv * transform.inverse[1];
+        const double j11 = sv * transform.inverse[3];
+        const double footprint =
+            std::sqrt(std::max(0.5 * (j00 * j00 + j01 * j01 + j10 * j10 + j11 * j11), 1e-16));
+        const double screenRange = std::max(desc.params[0] / footprint, 1.0);
+        const double distance = (median - 0.5) * screenRange + bias;
+        return solid(detail::scale(color, std::clamp(distance + 0.5, 0.0, 1.0)));
     }
     default:
         return solid(

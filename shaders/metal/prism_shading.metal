@@ -276,9 +276,16 @@ float clipCoverage(FrameBuffers frame, ushort clipId, float2 physical) {
     return coverage;
 }
 
-float stemDarkening(float coverage, float luminance) {
-    float beta = 0.28f * (1.0f - 2.0f * pow(clamp(luminance, 0.0f, 1.0f), 1.0f / 2.2f));
-    return coverage * (1.0f + beta) / (1.0f + beta * coverage);
+constexpr sampler glyphSampler(coord::normalized, filter::linear, address::clamp_to_edge);
+
+float polarityStemBias(float ppem, float background, float foreground) {
+    float polarity = background > foreground ? 1.0f : (background < foreground ? -1.0f : 0.0f);
+    float dark = background < 0.05f ? 0.085f * exp(-ppem / 14.0f) : 0.0f;
+    return polarity * 0.065f * exp(-ppem / 18.0f) + dark;
+}
+
+float shiftedCoverage(float coverage, float bias) {
+    return coverage > 0.0f ? clamp(coverage + bias, 0.0f, 1.0f) : 0.0f;
 }
 
 ShadeOut shadeTexture(PrimitiveDesc d, device const float *payload, TransformRecord t,
@@ -291,23 +298,30 @@ ShadeOut shadeTexture(PrimitiveDesc d, device const float *payload, TransformRec
     uint uvOffset = d.payloadOffset;
     float2 uv = float2(payload[uvOffset] + u * (payload[uvOffset + 2] - payload[uvOffset]),
                        payload[uvOffset + 1] + v * (payload[uvOffset + 3] - payload[uvOffset + 1]));
-    float4 texel = sampleBilinear(texture, uv);
+    float4 texel = texture.sample(glyphSampler, uv);
     uint kind = d.kindFlags & kindMask;
     float luminance = color.a > 0.0f ? dot(color.rgb, float3(0.2126f, 0.7152f, 0.0722f)) / color.a : 0.0f;
+    float bias = d.params[1] > 0.0f ? polarityStemBias(d.params[1], d.params[2], luminance) : 0.0f;
     if (kind == kindGlyphAlpha) {
-        result.color = color * stemDarkening(texel.x, luminance);
+        result.color = color * shiftedCoverage(texel.x, bias);
     } else if (kind == kindGlyphLcd) {
-        float3 k = float3(stemDarkening(texel.x, luminance), stemDarkening(texel.y, luminance),
-                          stemDarkening(texel.z, luminance));
+        float3 k = float3(shiftedCoverage(texel.x, bias), shiftedCoverage(texel.y, bias),
+                          shiftedCoverage(texel.z, bias));
         result.color = float4(color.rgb * k, color.a * (k.x + k.y + k.z) / 3.0f);
         result.coverage = color.a * k;
         result.subpixel = true;
     } else if (kind == kindGlyphMtsdf) {
         float median = max(min(texel.x, texel.y), min(max(texel.x, texel.y), texel.z));
-        float quadWidth = length(float2(t.forward[0], t.forward[1])) * (d.bounds[2] - d.bounds[0]);
-        float texelsAcross = abs(payload[uvOffset + 2] - payload[uvOffset]) * float(texture.get_width());
-        float screenRange = d.params[0] * quadWidth / max(texelsAcross, 1e-9f);
-        result.color = color * boxCoverage((0.5f - median) * screenRange, float2(1.0f, 0.0f));
+        float su = (payload[uvOffset + 2] - payload[uvOffset]) * float(texture.get_width()) /
+                   (d.bounds[2] - d.bounds[0]);
+        float sv = (payload[uvOffset + 3] - payload[uvOffset + 1]) * float(texture.get_height()) /
+                   (d.bounds[3] - d.bounds[1]);
+        float2 rowU = su * float2(t.inverse[0], t.inverse[2]);
+        float2 rowV = sv * float2(t.inverse[1], t.inverse[3]);
+        float footprint = sqrt(max(0.5f * (dot(rowU, rowU) + dot(rowV, rowV)), 1e-16f));
+        float screenRange = max(d.params[0] / footprint, 1.0f);
+        float distance = (median - 0.5f) * screenRange + bias;
+        result.color = color * clamp(distance + 0.5f, 0.0f, 1.0f);
     } else {
         result.color = texel * color.a;
     }

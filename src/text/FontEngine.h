@@ -21,6 +21,7 @@ struct TextStyle {
     std::uint32_t color;
     bool subpixel = false;
     bool transformed = false;
+    float background = -1;
 };
 
 inline constexpr float tierOneMaximumPixels = 24;

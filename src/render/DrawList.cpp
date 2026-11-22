@@ -264,6 +264,14 @@ void DrawList::texturedQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint3
     desc.payloadOffset = appendPayload({uv.x0, uv.y0, uv.x1, uv.y1});
 }
 
+void DrawList::glyphQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint32_t texture,
+                         std::uint32_t color, float pixelRange, float ppem, float background) {
+    texturedQuad(kind, rect, uv, texture, color, pixelRange);
+    PrimitiveDesc &desc = primitives_.back();
+    desc.params[1] = ppem;
+    desc.params[2] = background;
+}
+
 void DrawList::plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
                          std::uint32_t color, float scrollColumns, float edgeFade, bool fillBelow) {
     PrimitiveDesc &desc = emit(PrimitiveKind::plotStrip, rect, color);

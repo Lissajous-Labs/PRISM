@@ -61,6 +61,8 @@ class DrawList {
     void boxShadow(RectF box, float radius, float sigma, std::uint32_t color, bool inset = false);
     void texturedQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint32_t texture,
                       std::uint32_t color, float pixelRange = 0);
+    void glyphQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint32_t texture,
+                   std::uint32_t color, float pixelRange, float ppem, float background);
     void fillPath(const VectorPath &path, std::uint32_t color, FillRule rule = FillRule::nonZero);
     void strokePath(const VectorPath &path, const StrokeStyle &style, std::uint32_t color);
     void backdropBlur(RectF rect, math::CornerRadii radii, float sigma);

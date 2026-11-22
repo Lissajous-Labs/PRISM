@@ -1,6 +1,8 @@
 #include "text/FontEngine.h"
 
 #include "math/Hash64.h"
+#include "math/StemDarkening.h"
+#include "render/ShadingSupport.h"
 #include "text/GlyphRasterizer.h"
 
 #include <cmath>
@@ -84,6 +86,11 @@ void FontEngine::draw(render::DrawList &list, const TextLayout &layout, math::Ve
                       : tier == TextTier::lcd ? render::PrimitiveKind::glyphLcd
                                               : render::PrimitiveKind::glyphMtsdf;
     const std::uint32_t texture = textureBase_ + static_cast<std::uint32_t>(tier);
+    const auto foreground = render::detail::decodeColor(style.color);
+    const float background = math::resolveBackground(
+        style.background, math::foregroundLuminance(
+                              static_cast<float>(foreground.r), static_cast<float>(foreground.g),
+                              static_cast<float>(foreground.b), static_cast<float>(foreground.a)));
     for (const PositionedGlyph &glyph : layout.glyphs) {
         const double physicalX = (origin.x + glyph.x) * physicalScale;
         const double physicalY = (origin.y + glyph.y) * physicalScale;
@@ -118,11 +125,12 @@ void FontEngine::draw(render::DrawList &list, const TextLayout &layout, math::Ve
         }
         const double x1 = x0 + placement->slot.width * unit;
         const double y1 = y0 + placement->slot.height * unit;
-        list.texturedQuad(
+        list.glyphQuad(
             kind,
             {static_cast<float>(x0 / physicalScale), static_cast<float>(y0 / physicalScale),
              static_cast<float>(x1 / physicalScale), static_cast<float>(y1 / physicalScale)},
-            uv, texture, style.color, static_cast<float>(2 * mtsdf_.spread));
+            uv, texture, style.color, static_cast<float>(2 * mtsdf_.spread), physicalSize,
+            background);
     }
 }
 }

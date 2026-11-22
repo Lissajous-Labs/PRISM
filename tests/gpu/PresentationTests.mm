@@ -156,16 +156,9 @@ bool checkDirectColor(const std::shared_ptr<prism::backends::MetalDeviceState> &
                                          math::srgbDecode(c[2] / 255.0) * alpha};
             std::array<double, 3> coverage{alpha, alpha, alpha};
             if (subpixel) {
-                const double luminance =
-                    alpha == 0
-                        ? 0
-                        : (source[0] * 0.2126 + source[1] * 0.7152 + source[2] * 0.0722) / alpha;
-                const double beta = 0.28 * (1 - 2 * std::pow(luminance, 1 / 2.2));
                 for (std::size_t channel = 0; channel < source.size(); ++channel) {
-                    const double k =
-                        lcdChannels[channel] * (1 + beta) / (1 + beta * lcdChannels[channel]);
-                    source[channel] *= k;
-                    coverage[channel] *= k;
+                    source[channel] *= lcdChannels[channel];
+                    coverage[channel] *= lcdChannels[channel];
                 }
                 alpha = (coverage[0] + coverage[1] + coverage[2]) / 3;
             }

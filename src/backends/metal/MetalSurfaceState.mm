@@ -1,5 +1,6 @@
 #include "backends/metal/MetalSurfaceState.h"
 #include "backends/metal/MetalSpectrogram.h"
+#include "backends/metal/MetalTelemetry.h"
 #include "backends/metal/MetalUpload.h"
 #include "backends/metal/MetalWavetable3d.h"
 #include "math/ColorSpace.h"
@@ -423,6 +424,15 @@ id<CAMetalDrawable> MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands
         });
         if (sampled) {
             static_cast<void>(spectrogram->encode((__bridge void *)commands));
+        }
+    }
+    for (auto *telemetry : device->telemetries) {
+        const auto strip = telemetry->scope().nativeTexture;
+        const bool sampled = std::ranges::any_of(request.view.textures, [&](const auto &texture) {
+            return texture.nativeTexture != nullptr && texture.nativeTexture == strip;
+        });
+        if (sampled) {
+            static_cast<void>(telemetry->encode((__bridge void *)commands));
         }
     }
     formants.encode(*device, commands, primitives, payload, transforms);

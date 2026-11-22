@@ -29,6 +29,7 @@ set(PRISM_METAL_SHADERS
     "${PROJECT_SOURCE_DIR}/shaders/metal/vector_raster.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/post_effects.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/probes.metal"
+    "${PROJECT_SOURCE_DIR}/shaders/metal/telemetry_scope.metal"
 )
 string(REPLACE ";" "|" PRISM_SHADER_ARGUMENT "${PRISM_METAL_SHADERS}")
 set(PRISM_SHADER_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/ShaderSources.cpp")
@@ -75,6 +76,7 @@ if(APPLE)
         backends/metal/MetalShadowCache.mm
         backends/metal/MetalPathEngine.mm
         backends/metal/MetalSpectrogram.mm
+        backends/metal/MetalTelemetry.mm
         backends/metal/MetalWavetable3d.mm
         backends/metal/MetalSurface.mm
         backends/metal/MetalSurfaceState.mm
@@ -146,6 +148,7 @@ endif()
 
 add_library(prism_widgets STATIC
     telemetry/LoudnessMeter.cpp
+    telemetry/UmaTelemetry.cpp
     widgets/GpuFilterCurve.cpp
     widgets/GpuNoiseEnvelope.cpp
     widgets/VowelFormants.cpp

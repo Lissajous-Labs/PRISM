@@ -231,6 +231,10 @@ std::unique_ptr<MetalSpectrogram> MetalDevice::createSpectrogram(math::Wavetable
     return std::make_unique<MetalSpectrogram>(state_, table, rows);
 }
 
+std::unique_ptr<MetalTelemetry> MetalDevice::createTelemetry(std::uint32_t scopeColumns) {
+    return std::make_unique<MetalTelemetry>(state_, scopeColumns);
+}
+
 bool MetalDevice::virtualized() const {
     @autoreleasepool {
         return [state_->device.name rangeOfString:@"Paravirtual"].location != NSNotFound;

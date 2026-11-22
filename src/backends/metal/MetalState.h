@@ -14,11 +14,13 @@ inline constexpr std::size_t textureSlots = 16;
 inline constexpr std::size_t formantSlots = 8;
 
 class MetalSpectrogram;
+class MetalTelemetry;
 
 struct MetalDeviceState {
     id<MTLDevice> device = nil;
     id<MTLCommandQueue> queue = nil;
     std::vector<MetalSpectrogram *> spectrograms;
+    std::vector<MetalTelemetry *> telemetries;
     id<MTLLibrary> library = nil;
     std::array<id<MTLRenderPipelineState>, uberPipelineCount> pipelines{};
     id<MTLRenderPipelineState> opaque = nil;

@@ -81,10 +81,11 @@ bool checkHausdorff(test::Pcg &random) {
 
 double strokeArea(const std::vector<render::Polyline> &centerlines,
                   const render::StrokeStyle &style) {
-    std::vector<render::Polyline> outlines;
-    render::strokeOutlines(centerlines, style, outlines);
+    render::StrokeScratch scratch;
+    render::PolylineBuffer outlines;
+    render::strokeOutlines(centerlines, style, scratch, outlines);
     std::vector<render::LineSegment> segments;
-    render::appendFill(outlines, segments);
+    render::appendFill(outlines.view(), segments);
     render::PathTiler tiler;
     tiler.run(segments, 256, 256);
     std::vector<float> coverage(256 * 256);
@@ -112,7 +113,8 @@ bool checkStrokes() {
     style.cap = render::LineCap::square;
     ok = ok && near(strokeArea(line, style), 1100, 0.5);
     style.cap = render::LineCap::round;
-    ok = ok && near(strokeArea(line, style), 1000 + std::numbers::pi * 25, 2 * 0.125 * std::numbers::pi * 5);
+    ok = ok && near(strokeArea(line, style), 1000 + std::numbers::pi * 25,
+                    2 * 0.125 * std::numbers::pi * 5);
     const std::vector<render::Polyline> corner{{{{50, 50}, {150, 50}, {150, 150}}, false}};
     style.cap = render::LineCap::butt;
     style.join = render::LineJoin::miter;

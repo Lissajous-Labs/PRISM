@@ -93,7 +93,8 @@ class DrawList {
     std::vector<EffectDraw> effects_;
     std::vector<LineSegment> pathSegments_;
     PolylineBuffer polylineScratch_;
-    std::vector<Polyline> outlineScratch_;
+    PolylineBuffer outlineScratch_;
+    StrokeScratch strokeScratch_;
     std::uint16_t transform_ = identityTransform;
     std::uint16_t clip_ = noClip;
     hal::BlendMode blend_ = hal::BlendMode::sourceOver;

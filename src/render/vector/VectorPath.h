@@ -56,6 +56,7 @@ class PolylineBuffer {
     [[nodiscard]] std::span<const Polyline> view() const noexcept {
         return {storage_.data(), count_};
     }
+    [[nodiscard]] std::span<Polyline> lines() noexcept { return {storage_.data(), count_}; }
 
   private:
     std::vector<Polyline> storage_;

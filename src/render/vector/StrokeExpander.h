@@ -17,8 +17,14 @@ struct StrokeStyle {
     double tolerance = 0.125;
 };
 
+struct StrokeScratch {
+    PolylineBuffer dashed;
+    std::vector<math::Vector2> cleaned;
+    std::vector<math::Vector2> reversed;
+};
+
 void dashPolylines(std::span<const Polyline> input, std::span<const double> dashes, double offset,
-                   std::vector<Polyline> &output);
+                   PolylineBuffer &output);
 void strokeOutlines(std::span<const Polyline> input, const StrokeStyle &style,
-                    std::vector<Polyline> &output);
+                    StrokeScratch &scratch, PolylineBuffer &output);
 }

@@ -3,6 +3,7 @@
 #include "math/WangFlatten.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numbers>
 
@@ -37,8 +38,8 @@ void appendArc(std::vector<Vector2> &points, Vector2 center, Vector2 from, Vecto
     }
 }
 
-std::vector<Vector2> cleaned(const Polyline &polyline) {
-    std::vector<Vector2> points;
+void clean(const Polyline &polyline, std::vector<Vector2> &points) {
+    points.clear();
     for (const Vector2 point : polyline.points) {
         if (points.empty() || math::length(point - points.back()) > 1e-9) {
             points.push_back(point);
@@ -48,13 +49,12 @@ std::vector<Vector2> cleaned(const Polyline &polyline) {
         math::length(points.front() - points.back()) <= 1e-9) {
         points.pop_back();
     }
-    return points;
 }
 
 struct SideBuilder {
     const StrokeStyle &style;
     double half;
-    std::vector<Vector2> points;
+    std::vector<Vector2> &points;
 
     [[nodiscard]] Vector2 bisectorPoint(Vector2 pivot, Vector2 incoming, Vector2 outgoing,
                                         double side) const noexcept {
@@ -127,52 +127,57 @@ void appendSide(SideBuilder &builder, const std::vector<Vector2> &points) {
 }
 
 void strokeOpen(const std::vector<Vector2> &points, const StrokeStyle &style,
-                std::vector<Polyline> &output) {
+                std::vector<Vector2> &reversed, PolylineBuffer &output) {
     const double half = style.width / 2;
-    const std::vector<Vector2> reversed(points.rbegin(), points.rend());
+    reversed.assign(points.rbegin(), points.rend());
     const Vector2 startNormal = normalOf(points[0], points[1]);
     const Vector2 endNormal = normalOf(points[points.size() - 2], points.back());
-    SideBuilder builder{style, half, {}};
+    SideBuilder builder{style, half, output.open().points};
     builder.points.push_back(points[0] + startNormal * half);
     appendSide(builder, points);
     builder.cap(points.back(), endNormal, Vector2{endNormal.y, -endNormal.x});
     appendSide(builder, reversed);
     builder.cap(points[0], startNormal * -1, Vector2{-startNormal.y, startNormal.x});
-    output.push_back({std::move(builder.points), true});
+    output.commit(true);
 }
 
 void strokeClosed(const std::vector<Vector2> &points, const StrokeStyle &style,
-                  std::vector<Polyline> &output) {
+                  std::vector<Vector2> &reversed, PolylineBuffer &output) {
     const double half = style.width / 2;
-    const std::vector<Vector2> reversed(points.rbegin(), points.rend());
-    for (const auto *ring : {&points, &reversed}) {
+    reversed.assign(points.rbegin(), points.rend());
+    const std::array<const std::vector<Vector2> *, 2> rings{&points, &reversed};
+    for (const auto *ring : rings) {
         const std::size_t count = ring->size();
-        SideBuilder builder{style, half, {}};
+        SideBuilder builder{style, half, output.open().points};
         for (std::size_t i = 0; i < count; ++i) {
             const Vector2 previous = (*ring)[(i + count - 1) % count];
             const Vector2 next = (*ring)[(i + 1) % count];
             builder.join(previous, (*ring)[i], next, 1);
         }
-        output.push_back({std::move(builder.points), true});
+        output.commit(true);
     }
 }
 }
 
 void dashPolylines(std::span<const Polyline> input, std::span<const double> dashes, double offset,
-                   std::vector<Polyline> &output) {
+                   PolylineBuffer &output) {
     double pattern = 0;
     for (const double dash : dashes) {
         pattern += std::max(dash, 0.0);
     }
     if (dashes.empty() || !(pattern > 0)) {
-        output.insert(output.end(), input.begin(), input.end());
+        for (const Polyline &polyline : input) {
+            output.open().points.assign(polyline.points.begin(), polyline.points.end());
+            output.commit(polyline.closed);
+        }
         return;
     }
     for (const Polyline &polyline : input) {
-        std::vector<Vector2> points = polyline.points;
-        if (polyline.closed && !points.empty()) {
-            points.push_back(points.front());
-        }
+        const std::size_t count =
+            polyline.points.size() + (polyline.closed && !polyline.points.empty() ? 1 : 0);
+        const auto pointAt = [&](std::size_t i) {
+            return i < polyline.points.size() ? polyline.points[i] : polyline.points.front();
+        };
         std::size_t dashIndex = 0;
         double remaining = 0;
         double phase = std::fmod(std::fmod(offset, pattern) + pattern, pattern);
@@ -186,24 +191,20 @@ void dashPolylines(std::span<const Polyline> input, std::span<const double> dash
             dashIndex = (dashIndex + 1) % dashes.size();
         }
         bool on = dashIndex % 2 == 0;
-        Polyline current;
-        if (on && !points.empty()) {
-            current.points.push_back(points.front());
+        Polyline *current = &output.open();
+        if (on && count != 0) {
+            current->points.push_back(pointAt(0));
         }
-        for (std::size_t i = 0; i + 1 < points.size(); ++i) {
-            Vector2 a = points[i];
-            const Vector2 b = points[i + 1];
+        for (std::size_t i = 0; i + 1 < count; ++i) {
+            Vector2 a = pointAt(i);
+            const Vector2 b = pointAt(i + 1);
             double segmentLength = math::length(b - a);
             while (segmentLength > remaining) {
                 const Vector2 cut = a + (b - a) * (remaining / segmentLength);
+                current->points.push_back(cut);
                 if (on) {
-                    current.points.push_back(cut);
-                    if (current.points.size() >= 2) {
-                        output.push_back(std::move(current));
-                    }
-                    current = Polyline{};
-                } else {
-                    current.points.push_back(cut);
+                    output.commit(false);
+                    current = &output.open();
                 }
                 on = !on;
                 segmentLength -= remaining;
@@ -213,28 +214,28 @@ void dashPolylines(std::span<const Polyline> input, std::span<const double> dash
             }
             remaining -= segmentLength;
             if (on) {
-                current.points.push_back(b);
+                current->points.push_back(b);
             }
         }
-        if (on && current.points.size() >= 2) {
-            output.push_back(std::move(current));
+        if (on) {
+            output.commit(false);
         }
     }
 }
 
 void strokeOutlines(std::span<const Polyline> input, const StrokeStyle &style,
-                    std::vector<Polyline> &output) {
-    std::vector<Polyline> dashed;
-    dashPolylines(input, style.dashes, style.dashOffset, dashed);
-    for (const Polyline &polyline : dashed) {
-        const auto points = cleaned(polyline);
-        if (points.size() < 2) {
+                    StrokeScratch &scratch, PolylineBuffer &output) {
+    scratch.dashed.clear();
+    dashPolylines(input, style.dashes, style.dashOffset, scratch.dashed);
+    for (const Polyline &polyline : scratch.dashed.view()) {
+        clean(polyline, scratch.cleaned);
+        if (scratch.cleaned.size() < 2) {
             continue;
         }
-        if (polyline.closed && points.size() >= 3) {
-            strokeClosed(points, style, output);
+        if (polyline.closed && scratch.cleaned.size() >= 3) {
+            strokeClosed(scratch.cleaned, style, scratch.reversed, output);
         } else {
-            strokeOpen(points, style, output);
+            strokeOpen(scratch.cleaned, style, scratch.reversed, output);
         }
     }
 }

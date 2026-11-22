@@ -77,6 +77,44 @@ kernel void kawaseDownPass(texture2d<float> source [[texture(0)]], texture2d<flo
     target.write(sum, pixel);
 }
 
+float4 cropBlock(texture2d<float> source, int2 corner, int2 low, int2 high) {
+    return source.read(uint2(clamp(corner, low, high))) +
+           source.read(uint2(clamp(corner + int2(1, 0), low, high))) +
+           source.read(uint2(clamp(corner + int2(0, 1), low, high))) +
+           source.read(uint2(clamp(corner + int2(1, 1), low, high)));
+}
+
+kernel void kawaseCropDownPass(texture2d<float> source [[texture(0)]],
+                               texture2d<float, access::write> target [[texture(1)]],
+                               constant EffectUniforms &u [[buffer(1)]],
+                               uint2 pixel [[thread_position_in_grid]]) {
+    uint2 size = uint2(target.get_width(), target.get_height());
+    if (pixel.x >= size.x || pixel.y >= size.y) {
+        return;
+    }
+
+    int2 low = u.crop.xy;
+    int2 base = low + int2(pixel) * 2;
+    if (pixel.x != 0u && pixel.y != 0u && pixel.x + 1u < size.x && pixel.y + 1u < size.y) {
+        float2 c = float2(base) + 1.0f;
+        float4 sum = 0.5f * sampleAt(source, c, u.sourceSize);
+        sum += 0.125f * (sampleAt(source, c + float2(-1, -1), u.sourceSize) +
+                         sampleAt(source, c + float2(1, -1), u.sourceSize) +
+                         sampleAt(source, c + float2(-1, 1), u.sourceSize) +
+                         sampleAt(source, c + float2(1, 1), u.sourceSize));
+        target.write(sum, pixel);
+        return;
+    }
+
+    int2 high = u.crop.zw - 1;
+    float4 center = cropBlock(source, base, low, high);
+    float4 corners = cropBlock(source, base + int2(-1, -1), low, high) +
+                     cropBlock(source, base + int2(1, -1), low, high) +
+                     cropBlock(source, base + int2(-1, 1), low, high) +
+                     cropBlock(source, base + int2(1, 1), low, high);
+    target.write(0.125f * center + 0.03125f * corners, pixel);
+}
+
 float4 kawaseUpSample(texture2d<float> source, float2 c, float2 size) {
     float4 cardinal = sampleAt(source, c + float2(-1, 0), size) + sampleAt(source, c + float2(1, 0), size) +
                       sampleAt(source, c + float2(0, -1), size) + sampleAt(source, c + float2(0, 1), size);
@@ -94,14 +132,37 @@ kernel void kawaseUpPass(texture2d<float> source [[texture(0)]], texture2d<float
     target.write(kawaseUpSample(source, c, u.sourceSize), pixel);
 }
 
-kernel void mixPass(texture2d<float, access::read> lower [[texture(0)]], texture2d<float, access::read> upper [[texture(1)]],
-                    texture2d<float, access::write> target [[texture(2)]], constant EffectUniforms &u [[buffer(1)]],
-                    uint2 pixel [[thread_position_in_grid]]) {
-    if (pixel.x >= target.get_width() || pixel.y >= target.get_height()) {
+float effectMask(constant EffectUniforms &u, float2 p) {
+    float2 center = (u.rect.xy + u.rect.zw) * 0.5f;
+    float2 half_ = (u.rect.zw - u.rect.xy) * 0.5f;
+    float d = sdRoundedRect(p - center, half_, u.radii);
+    float2 gradient = sdRoundedRectGradient(p - center, half_, u.radii);
+    float norm = length(gradient);
+    return norm > 1e-12f ? boxCoverage(d / norm, gradient) : (d <= 0.0f ? 1.0f : 0.0f);
+}
+
+kernel void kawaseCompositePass(texture2d<float> lower [[texture(0)]],
+                                texture2d<float> upper [[texture(1)]],
+                                texture2d<float, access::read_write> target [[texture(2)]],
+                                constant EffectUniforms &u [[buffer(1)]],
+                                uint2 offset [[thread_position_in_grid]]) {
+    uint2 pixel = uint2(u.crop.xy) + offset;
+    if (int(pixel.x) >= u.crop.z || int(pixel.y) >= u.crop.w) {
         return;
     }
-    float4 a = lower.read(pixel);
-    target.write(a + (upper.read(pixel) - a) * u.blend, pixel);
+
+    float mask = effectMask(u, float2(pixel) + 0.5f);
+    if (mask <= 0.0f) {
+        return;
+    }
+
+    float2 c = (float2(offset) + 0.5f) * (u.sourceSize / u.targetSize);
+    float4 blurred = kawaseUpSample(lower, c, u.sourceSize);
+    if (u.blend > 0.0f) {
+        blurred += (kawaseUpSample(upper, c, u.sourceSize) - blurred) * u.blend;
+    }
+    float4 current = target.read(pixel);
+    target.write(current + (blurred - current) * mask, pixel);
 }
 
 kernel void effectCompositePass(texture2d<float, access::read> blurred [[texture(0)]],
@@ -111,19 +172,12 @@ kernel void effectCompositePass(texture2d<float, access::read> blurred [[texture
     if (int(pixel.x) >= u.crop.z || int(pixel.y) >= u.crop.w) {
         return;
     }
-    float2 center = (u.rect.xy + u.rect.zw) * 0.5f;
-    float2 half_ = (u.rect.zw - u.rect.xy) * 0.5f;
-    float2 p = float2(pixel) + 0.5f;
-    float d = sdRoundedRect(p - center, half_, u.radii);
-    float2 gradient = float2(sdRoundedRect(p + float2(gradientStep, 0) - center, half_, u.radii) -
-                                 sdRoundedRect(p - float2(gradientStep, 0) - center, half_, u.radii),
-                             sdRoundedRect(p + float2(0, gradientStep) - center, half_, u.radii) -
-                                 sdRoundedRect(p - float2(0, gradientStep) - center, half_, u.radii)) / (2.0f * gradientStep);
-    float norm = length(gradient);
-    float mask = norm > 1e-12f ? boxCoverage(d / norm, gradient) : (d <= 0.0f ? 1.0f : 0.0f);
+
+    float mask = effectMask(u, float2(pixel) + 0.5f);
     if (mask <= 0.0f) {
         return;
     }
+
     float4 current = target.read(pixel);
     target.write(current + (blurred.read(offset) - current) * mask, pixel);
 }

@@ -23,6 +23,7 @@ void buildEffectScene(render::DrawList &list) {
     list.roundedRect({8, 8, 60, 70}, {8, 8, 8, 8}, render::packColor(255, 255, 255, 40));
     list.backdropBlur({70, 8, 130, 90}, {12, 12, 12, 12}, 10);
     list.backdropBlur({20, 90, 180, 150}, {16, 16, 16, 16}, 24);
+    list.backdropBlur({120, 4, 188, 84}, {10, 10, 10, 10}, 20);
     list.capsule({140, 20}, {180, 60}, 2, render::packColor(255, 255, 255, 255));
 }
 

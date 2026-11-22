@@ -26,11 +26,14 @@ class MetalEffects {
         id<MTLTexture> texture;
     };
     std::vector<PooledTexture> pool_;
+    std::vector<id<MTLTexture>> chain_;
     id<MTLBuffer> taps_ = nil;
 
     id<MTLTexture> texture(MetalDeviceState &device, std::uint32_t width, std::uint32_t height,
                            std::uint32_t slot);
-    id<MTLTexture> kawaseChain(MetalDeviceState &device, id<MTLCommandBuffer> commands,
-                               id<MTLTexture> source, int levels, std::uint32_t slotBase);
+    void kawaseDown(MetalDeviceState &device, id<MTLCommandBuffer> commands, id<MTLTexture> source,
+                    int levels, std::uint32_t slotBase);
+    id<MTLTexture> kawaseUp(MetalDeviceState &device, id<MTLCommandBuffer> commands, int depth,
+                            int stop, std::uint32_t slotBase);
 };
 }

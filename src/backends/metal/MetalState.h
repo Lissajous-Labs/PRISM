@@ -42,8 +42,9 @@ struct MetalDeviceState {
     id<MTLComputePipelineState> blurPaired = nil;
     id<MTLComputePipelineState> blurShared = nil;
     id<MTLComputePipelineState> kawaseDown = nil;
+    id<MTLComputePipelineState> kawaseCropDown = nil;
     id<MTLComputePipelineState> kawaseUp = nil;
-    id<MTLComputePipelineState> mixTextures = nil;
+    id<MTLComputePipelineState> kawaseComposite = nil;
     id<MTLComputePipelineState> effectComposite = nil;
     id<MTLComputePipelineState> bloomPrefilter = nil;
     id<MTLComputePipelineState> bloomComposite = nil;

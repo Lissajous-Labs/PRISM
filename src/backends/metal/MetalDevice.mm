@@ -179,8 +179,9 @@ std::shared_ptr<MetalDeviceState> createMetalDeviceState() {
     state->blurPaired = compute("blurPairedPass");
     state->blurShared = compute("blurSharedPass");
     state->kawaseDown = compute("kawaseDownPass");
+    state->kawaseCropDown = compute("kawaseCropDownPass");
     state->kawaseUp = compute("kawaseUpPass");
-    state->mixTextures = compute("mixPass");
+    state->kawaseComposite = compute("kawaseCompositePass");
     state->effectComposite = compute("effectCompositePass");
     state->bloomPrefilter = compute("bloomPrefilterPass");
     state->bloomComposite = compute("bloomCompositePass");

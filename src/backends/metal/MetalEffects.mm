@@ -69,24 +69,29 @@ id<MTLTexture> MetalEffects::texture(MetalDeviceState &device, std::uint32_t wid
     return created;
 }
 
-id<MTLTexture> MetalEffects::kawaseChain(MetalDeviceState &device, id<MTLCommandBuffer> commands,
-                                         id<MTLTexture> source, int levels,
-                                         std::uint32_t slotBase) {
-    std::vector<id<MTLTexture>> chain{source};
+void MetalEffects::kawaseDown(MetalDeviceState &device, id<MTLCommandBuffer> commands,
+                              id<MTLTexture> source, int levels, std::uint32_t slotBase) {
+    chain_.clear();
+    chain_.push_back(source);
     for (int level = 0; level < levels; ++level) {
-        id<MTLTexture> previous = chain.back();
+        id<MTLTexture> previous = chain_.back();
         id<MTLTexture> next = texture(
             device, std::max<std::uint32_t>(1, static_cast<std::uint32_t>(previous.width) / 2),
             std::max<std::uint32_t>(1, static_cast<std::uint32_t>(previous.height) / 2),
             slotBase + level);
         run(commands, device.kawaseDown, previous, next, sized(previous, next));
-        chain.push_back(next);
+        chain_.push_back(next);
     }
-    id<MTLTexture> current = chain.back();
-    for (int level = levels - 1; level >= 0; --level) {
+}
+
+id<MTLTexture> MetalEffects::kawaseUp(MetalDeviceState &device, id<MTLCommandBuffer> commands,
+                                      int depth, int stop, std::uint32_t slotBase) {
+    id<MTLTexture> current = chain_[static_cast<std::size_t>(depth)];
+    for (int level = depth - 1; level >= stop; --level) {
+        id<MTLTexture> reference = chain_[static_cast<std::size_t>(level)];
         id<MTLTexture> target =
-            texture(device, static_cast<std::uint32_t>(chain[level].width),
-                    static_cast<std::uint32_t>(chain[level].height), slotBase + 32 + level);
+            texture(device, static_cast<std::uint32_t>(reference.width),
+                    static_cast<std::uint32_t>(reference.height), slotBase + 32 + level);
         run(commands, device.kawaseUp, current, target, sized(current, target));
         current = target;
     }
@@ -102,6 +107,45 @@ void MetalEffects::backdrop(MetalDeviceState &device, id<MTLCommandBuffer> comma
     }
     const auto width = static_cast<std::uint32_t>(crop.x1 - crop.x0);
     const auto height = static_cast<std::uint32_t>(crop.y1 - crop.y0);
+    EffectUniforms composite{};
+    composite.crop[0] = crop.x0;
+    composite.crop[1] = crop.y0;
+    composite.crop[2] = crop.x1;
+    composite.crop[3] = crop.y1;
+    for (int i = 0; i < 4; ++i) {
+        composite.rect[i] = effect.rect[i];
+        composite.radii[i] = effect.radii[i];
+    }
+
+    const auto method = render::blurMethodFor(effect.sigma);
+    if (method == render::BlurMethod::kawase) {
+        const auto levels = render::kawaseLevels(effect.sigma);
+        const bool blended = levels.blend > 0;
+        id<MTLTexture> first = texture(device, std::max<std::uint32_t>(1, width / 2),
+                                       std::max<std::uint32_t>(1, height / 2), 100);
+        EffectUniforms down = composite;
+        down.sourceSize[0] = static_cast<float>(color.width);
+        down.sourceSize[1] = static_cast<float>(color.height);
+        run(commands, device.kawaseCropDown, color, first, down);
+        kawaseDown(device, commands, first, levels.levels - 1 + (blended ? 1 : 0), 101);
+        id<MTLTexture> lower = kawaseUp(device, commands, levels.levels - 1, 0, 100);
+        id<MTLTexture> upper = blended ? kawaseUp(device, commands, levels.levels, 0, 200) : lower;
+        composite.sourceSize[0] = static_cast<float>(lower.width);
+        composite.sourceSize[1] = static_cast<float>(lower.height);
+        composite.targetSize[0] = static_cast<float>(width);
+        composite.targetSize[1] = static_cast<float>(height);
+        composite.blend = blended ? levels.blend : 0;
+        id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+        [encoder setComputePipelineState:device.kawaseComposite];
+        [encoder setTexture:lower atIndex:0];
+        [encoder setTexture:upper atIndex:1];
+        [encoder setTexture:color atIndex:2];
+        [encoder setBytes:&composite length:sizeof(composite) atIndex:1];
+        dispatchPixels(encoder, width, height);
+        [encoder endEncoding];
+        return;
+    }
+
     id<MTLTexture> source = texture(device, width, height, 0);
     id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
     [blit copyFromTexture:color
@@ -115,8 +159,7 @@ void MetalEffects::backdrop(MetalDeviceState &device, id<MTLCommandBuffer> comma
         destinationOrigin:MTLOriginMake(0, 0, 0)];
     [blit endEncoding];
     id<MTLTexture> blurred = nil;
-    switch (render::blurMethodFor(effect.sigma)) {
-    case render::BlurMethod::paired: {
+    if (method == render::BlurMethod::paired) {
         const auto taps = render::pairedTaps(render::gaussianWeights(effect.sigma));
         upload(device.device, taps_, taps.data(), taps.size() * sizeof(render::PairedTap));
         id<MTLTexture> middle = texture(device, width, height, 1);
@@ -134,9 +177,7 @@ void MetalEffects::backdrop(MetalDeviceState &device, id<MTLCommandBuffer> comma
             dispatchPixels(encoder, width, height);
             [encoder endEncoding];
         }
-        break;
-    }
-    case render::BlurMethod::separable: {
+    } else {
         const auto weights = render::gaussianWeights(effect.sigma);
         upload(device.device, taps_, weights.data(), weights.size() * sizeof(float));
         id<MTLTexture> middle = texture(device, width, height, 1);
@@ -157,43 +198,13 @@ void MetalEffects::backdrop(MetalDeviceState &device, id<MTLCommandBuffer> comma
                     threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
             [encoder endEncoding];
         }
-        break;
     }
-    case render::BlurMethod::kawase: {
-        const auto levels = render::kawaseLevels(effect.sigma);
-        id<MTLTexture> lower = kawaseChain(device, commands, source, levels.levels, 100);
-        blurred = lower;
-        if (levels.blend > 0) {
-            id<MTLTexture> upper = kawaseChain(device, commands, source, levels.levels + 1, 200);
-            blurred = texture(device, width, height, 3);
-            EffectUniforms u = sized(lower, blurred);
-            u.blend = levels.blend;
-            id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
-            [encoder setComputePipelineState:device.mixTextures];
-            [encoder setTexture:lower atIndex:0];
-            [encoder setTexture:upper atIndex:1];
-            [encoder setTexture:blurred atIndex:2];
-            [encoder setBytes:&u length:sizeof(u) atIndex:1];
-            dispatchPixels(encoder, width, height);
-            [encoder endEncoding];
-        }
-        break;
-    }
-    }
-    EffectUniforms u{};
-    u.crop[0] = crop.x0;
-    u.crop[1] = crop.y0;
-    u.crop[2] = crop.x1;
-    u.crop[3] = crop.y1;
-    for (int i = 0; i < 4; ++i) {
-        u.rect[i] = effect.rect[i];
-        u.radii[i] = effect.radii[i];
-    }
+
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
     [encoder setComputePipelineState:device.effectComposite];
     [encoder setTexture:blurred atIndex:0];
     [encoder setTexture:color atIndex:1];
-    [encoder setBytes:&u length:sizeof(u) atIndex:1];
+    [encoder setBytes:&composite length:sizeof(composite) atIndex:1];
     dispatchPixels(encoder, width, height);
     [encoder endEncoding];
 }
@@ -209,7 +220,8 @@ void MetalEffects::bloom(MetalDeviceState &device, id<MTLCommandBuffer> commands
     u.knee = settings.knee;
     u.karis = settings.karis ? 1 : 0;
     run(commands, device.bloomPrefilter, scene, prefiltered, u);
-    id<MTLTexture> glow = kawaseChain(device, commands, prefiltered, settings.levels, 400);
+    kawaseDown(device, commands, prefiltered, settings.levels, 400);
+    id<MTLTexture> glow = kawaseUp(device, commands, settings.levels, 0, 400);
     EffectUniforms c = sized(glow, output);
     c.intensity = settings.intensity;
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];

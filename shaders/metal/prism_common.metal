@@ -38,7 +38,7 @@ struct FrameUniforms {
 };
 
 struct ShadowSprite {
-    uint offset;
+    uint origin;
     uint width;
     uint height;
     float step;
@@ -54,7 +54,7 @@ struct FrameBuffers {
     device const ClipRecord *clips;
     device const float4 *halftoneCells;
     device const ShadowSprite *shadowTable;
-    device const float *shadowSprites;
+    texture2d<float> shadowSprites;
 };
 
 constant uint kindMask = 0xFFu;

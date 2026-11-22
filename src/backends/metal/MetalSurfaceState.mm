@@ -335,7 +335,8 @@ void MetalSurfaceState::bindUber(id<MTLRenderCommandEncoder> encoder,
     [encoder setFragmentBuffer:counter offset:0 atIndex:6];
     [encoder setFragmentBuffer:halftones.cells() offset:0 atIndex:7];
     [encoder setFragmentBuffer:shadows.table() offset:0 atIndex:8];
-    [encoder setFragmentBuffer:shadows.sprites() offset:0 atIndex:9];
+    [encoder setFragmentTexture:(shadows.atlas() ? shadows.atlas() : device->emptyTexture)
+                        atIndex:textureSlots + formantSlots + 1];
     [encoder setFragmentTexture:(gradients ? gradients : device->emptyTexture) atIndex:0];
     for (std::size_t slot = 0; slot < textureSlots; ++slot) {
         [encoder setVertexTexture:(textures[slot] ? textures[slot] : device->emptyTexture)

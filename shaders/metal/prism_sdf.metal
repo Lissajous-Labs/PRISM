@@ -289,26 +289,27 @@ float roundedBoxShadow(float2 p, float2 half_, float radius, float sigma) {
     return total;
 }
 
-kernel void shadowSprites(device const ShadowSprite *table [[buffer(0)]], device float *sprites [[buffer(1)]],
-                          constant uint &index [[buffer(2)]], uint2 gid [[thread_position_in_grid]]) {
+uint2 spriteOrigin(ShadowSprite s) { return uint2(s.origin & 0xFFFFu, s.origin >> 16); }
+
+kernel void shadowSprites(device const ShadowSprite *table [[buffer(0)]],
+                          texture2d<float, access::write> atlas [[texture(0)]],
+                          constant uint &index [[buffer(2)]],
+                          uint2 gid [[thread_position_in_grid]]) {
     ShadowSprite s = table[index];
     if (gid.x >= s.width || gid.y >= s.height) {
         return;
     }
-    sprites[s.offset + gid.y * s.width + gid.x] =
-        roundedBoxShadow(float2(gid) * s.step, s.half_, s.radius, s.sigma);
+    atlas.write(float4(roundedBoxShadow(float2(gid) * s.step, s.half_, s.radius, s.sigma)),
+                spriteOrigin(s) + gid);
 }
 
-float sampleShadowSprite(device const ShadowSprite *table, device const float *sprites, uint index, float2 p) {
+float sampleShadowSprite(device const ShadowSprite *table, texture2d<float> atlas, uint index,
+                         float2 p) {
+    constexpr sampler spriteSampler(coord::pixel, address::clamp_to_edge, filter::linear);
     ShadowSprite s = table[index];
     float2 q = fast::divide(abs(p), float2(s.step));
     if (q.x >= float(s.width - 1u) || q.y >= float(s.height - 1u)) {
         return 0.0f;
     }
-    uint2 i = uint2(q);
-    float2 f = q - float2(i);
-    device const float *row = sprites + s.offset + i.y * s.width + i.x;
-    float top = mix(row[0], row[1], f.x);
-    float bottom = mix(row[s.width], row[s.width + 1u], f.x);
-    return mix(top, bottom, f.y);
+    return atlas.sample(spriteSampler, float2(spriteOrigin(s)) + q + 0.5f).x;
 }

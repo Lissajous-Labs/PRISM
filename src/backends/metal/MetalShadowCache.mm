@@ -8,7 +8,7 @@
 namespace prism::backends {
 namespace {
 constexpr std::size_t maxEntries = 256;
-constexpr std::uint32_t maxTexels = 1u << 22;
+constexpr std::uint32_t atlasSize = 2048;
 
 float largestScale(const render::TransformRecord &t) noexcept {
     const double a = t.forward[0], b = t.forward[1], c = t.forward[2], d = t.forward[3];
@@ -69,9 +69,20 @@ void MetalShadowCache::prepare(MetalDeviceState &device, const render::FrameView
             const float reach = 3 * sigma + 2;
             const auto width = static_cast<std::uint32_t>(std::ceil((half[0] + reach) / step)) + 2;
             const auto height = static_cast<std::uint32_t>(std::ceil((half[1] + reach) / step)) + 2;
-            if (entries_.size() >= maxEntries || texels_ + width * height > maxTexels) {
+            if (width > atlasSize || height > atlasSize) {
+                continue;
+            }
+
+            if (shelfX_ + width > atlasSize) {
+                shelfY_ += shelfHeight_;
+                shelfX_ = 0;
+                shelfHeight_ = 0;
+            }
+            if (entries_.size() >= maxEntries || shelfY_ + height > atlasSize) {
                 entries_.clear();
-                texels_ = 0;
+                shelfX_ = 0;
+                shelfY_ = 0;
+                shelfHeight_ = 0;
                 pending_.clear();
                 for (std::size_t j = 0; j < i; ++j) {
                     gpuPrimitives[j].auxHandle =
@@ -80,12 +91,16 @@ void MetalShadowCache::prepare(MetalDeviceState &device, const render::FrameView
                             : gpuPrimitives[j].auxHandle;
                 }
             }
-            if (width * height > maxTexels) {
-                continue;
-            }
             index = static_cast<std::uint32_t>(entries_.size());
-            entries_.push_back({texels_, width, height, step, {half[0], half[1]}, radius, sigma});
-            texels_ += width * height;
+            entries_.push_back({shelfX_ | (shelfY_ << 16),
+                                width,
+                                height,
+                                step,
+                                {half[0], half[1]},
+                                radius,
+                                sigma});
+            shelfX_ += width;
+            shelfHeight_ = std::max(shelfHeight_, height);
             pending_.push_back(index);
         }
         gpuPrimitives[i].auxHandle = index;
@@ -93,9 +108,17 @@ void MetalShadowCache::prepare(MetalDeviceState &device, const render::FrameView
     }
     if (!pending_.empty() || table_ == nil) {
         upload(device.device, table_, entries_.data(), entries_.size() * sizeof(ShadowSprite));
-        if (sprites_ == nil || sprites_.length < static_cast<std::size_t>(maxTexels) * 4) {
-            sprites_ = [device.device newBufferWithLength:static_cast<std::size_t>(maxTexels) * 4
-                                                  options:MTLResourceStorageModePrivate];
+        if (atlas_ == nil) {
+            MTLTextureDescriptor *descriptor = [MTLTextureDescriptor
+                texture2DDescriptorWithPixelFormat:device.device.supports32BitFloatFiltering
+                                                       ? MTLPixelFormatR32Float
+                                                       : MTLPixelFormatR16Float
+                                             width:atlasSize
+                                            height:atlasSize
+                                         mipmapped:NO];
+            descriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+            descriptor.storageMode = MTLStorageModePrivate;
+            atlas_ = [device.device newTextureWithDescriptor:descriptor];
         }
     }
 }
@@ -107,7 +130,7 @@ void MetalShadowCache::encode(MetalDeviceState &device, id<MTLCommandBuffer> com
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
     [encoder setComputePipelineState:device.shadowSprites];
     [encoder setBuffer:table_ offset:0 atIndex:0];
-    [encoder setBuffer:sprites_ offset:0 atIndex:1];
+    [encoder setTexture:atlas_ atIndex:0];
     for (const std::uint32_t index : pending_) {
         const ShadowSprite &entry = entries_[index];
         [encoder setBytes:&index length:sizeof(index) atIndex:2];

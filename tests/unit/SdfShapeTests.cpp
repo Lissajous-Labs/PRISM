@@ -92,11 +92,45 @@ bool checkKnownValues() {
            std::abs(inner.radii.topRight - 2) < 1e-12 &&
            std::isfinite(roundedTriangle({0, 0}, {1, 1}, {2, 2}, {3, 3}, 1));
 }
+
+bool checkRadiusClamping() {
+    prism::test::Pcg random(97);
+    for (int i = 0; i < 4096; ++i) {
+        const Vector2 half{i % 17 == 0 ? 0 : random.range(0.1, 100),
+                           i % 19 == 0 ? 0 : random.range(0.1, 100)};
+        const CornerRadii radii{i % 4 == 0 ? 0 : random.range(0.1, 200), random.range(0.1, 200),
+                                random.range(0.1, 200), random.range(0.1, 200)};
+        const auto result = clampRadii(radii, half);
+        const double factor = result.bottomRight / radii.bottomRight;
+        if (factor < 0 or factor > 1 or
+            std::abs(result.topRight - radii.topRight * factor) > 1e-10 or
+            std::abs(result.topLeft - radii.topLeft * factor) > 1e-10 or
+            std::abs(result.bottomLeft - radii.bottomLeft * factor) > 1e-10) {
+            return false;
+        }
+        const double slack = std::min({2 * half.x - result.topLeft - result.topRight,
+                                       2 * half.x - result.bottomLeft - result.bottomRight,
+                                       2 * half.y - result.topLeft - result.bottomLeft,
+                                       2 * half.y - result.topRight - result.bottomRight});
+        if (slack < -1e-10 or (factor < 1 and slack > 1e-10)) {
+            return false;
+        }
+    }
+    for (const double radius : {std::nextafter(10.0, 0.0), 10.0, std::nextafter(10.0, 20.0)}) {
+        const auto result = clampRadii({radius, radius, radius, radius}, {10, 10});
+        const double expected = std::min(radius, 10.0);
+        if (result.topLeft != expected or result.topRight != expected or
+            result.bottomLeft != expected or result.bottomRight != expected) {
+            return false;
+        }
+    }
+    return true;
+}
 }
 
 int main() {
     prism::test::Pcg random(5);
-    bool passed = checkKnownValues();
+    bool passed = checkKnownValues() and checkRadiusClamping();
     for (int i = 0; passed && i < 25000; ++i) {
         passed = fuzzShape(random, i % 5);
     }

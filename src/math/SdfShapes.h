@@ -27,11 +27,19 @@ struct RoundedRectShape {
 };
 
 [[nodiscard]] constexpr CornerRadii clampRadii(CornerRadii radii, Vector2 half) noexcept {
+    const double width = 2 * half.x, height = 2 * half.y;
+    const double top = radii.topLeft + radii.topRight;
+    const double bottom = radii.bottomLeft + radii.bottomRight;
+    const double left = radii.topLeft + radii.bottomLeft;
+    const double right = radii.topRight + radii.bottomRight;
+    const auto fits = [](double extent, double sum) { return !(sum > 0) or sum <= extent; };
+    if (fits(width, top) and fits(width, bottom) and fits(height, left) and fits(height, right)) {
+        return radii;
+    }
+
     const auto ratio = [](double extent, double sum) { return sum > 0 ? extent / sum : 1.0; };
-    const double scale = std::min({1.0, ratio(2 * half.x, radii.topLeft + radii.topRight),
-                                   ratio(2 * half.x, radii.bottomLeft + radii.bottomRight),
-                                   ratio(2 * half.y, radii.topLeft + radii.bottomLeft),
-                                   ratio(2 * half.y, radii.topRight + radii.bottomRight)});
+    const double scale = std::min(
+        {1.0, ratio(width, top), ratio(width, bottom), ratio(height, left), ratio(height, right)});
     return {radii.topRight * scale, radii.bottomRight * scale, radii.topLeft * scale,
             radii.bottomLeft * scale};
 }

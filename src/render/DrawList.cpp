@@ -94,7 +94,6 @@ void DrawList::setConicGradient(std::uint32_t row, math::Vector2 center,
 
 PrimitiveDesc &DrawList::emit(PrimitiveKind kind, RectF bounds, std::uint32_t color) {
     PrimitiveDesc &desc = primitives_.emplace_back();
-    desc = {};
     desc.bounds[0] = bounds.x0;
     desc.bounds[1] = bounds.y0;
     desc.bounds[2] = bounds.x1;

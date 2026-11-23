@@ -5,8 +5,11 @@
 #import <Metal/Metal.h>
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <numbers>
 #include <vector>
@@ -128,6 +131,81 @@ int main() {
         std::cout << "GPU spectrum knots " << power.size() << ", generation "
                   << telemetry->spectrumGeneration() << ", worst knot deviation from CPU "
                   << worstRatio << " dB\n";
-        return power.size() == reference.power().size() && worstRatio < 0.01 ? 0 : 1;
+        if (power.size() != reference.power().size() || !std::isfinite(worstRatio) ||
+            worstRatio >= 0.01) {
+            return 1;
+        }
+
+        using Clock = std::chrono::steady_clock;
+        static_assert(Clock::is_steady);
+        constexpr std::size_t warmup = 32;
+        constexpr std::size_t samples = 512;
+        std::array<double, samples> publicationReturnMs{};
+        std::array<double, samples> publicationEntryMs{};
+        for (std::size_t sample = 0; sample < warmup + samples; ++sample) {
+            for (std::size_t n = 0; n < left.size(); ++n) {
+                const double t = static_cast<double>(written + n) / settings.sampleRate;
+                left[n] = static_cast<float>(0.3 * std::sin(2 * std::numbers::pi * 61 * t));
+                right[n] = static_cast<float>(0.2 * std::sin(2 * std::numbers::pi * 7300 * t));
+            }
+            const auto previousGeneration = telemetry->spectrumGeneration();
+            const auto publicationEntry = Clock::now();
+            writer.write(left, right);
+            const auto publicationReturn = Clock::now();
+            const auto sequence = layout.publishedSeq.load(std::memory_order_acquire);
+            if (!telemetry->prepareSpectrum() || !telemetry->dispatch()) {
+                std::cout << "timed spectrum dispatch failed at sample " << sample << "\n";
+                return 1;
+            }
+            const auto completionObserved = Clock::now();
+            written += left.size();
+            const auto &snapshot = telemetry->lastSnapshot();
+            const auto completedPower = telemetry->spectrumPower();
+            if (snapshot.sequence != sequence || snapshot.frames != written ||
+                telemetry->spectrumGeneration() != previousGeneration + 1 ||
+                completedPower.size() != settings.knots ||
+                !std::all_of(completedPower.begin(), completedPower.end(),
+                             [](float value) { return std::isfinite(value) && value > 0; })) {
+                std::cout << "timed spectrum publication/completion mismatch at sample " << sample
+                          << "\n";
+                return 1;
+            }
+            if (sample >= warmup) {
+                publicationReturnMs[sample - warmup] = std::chrono::duration<double, std::milli>(
+                                                           completionObserved - publicationReturn)
+                                                           .count();
+                publicationEntryMs[sample - warmup] =
+                    std::chrono::duration<double, std::milli>(completionObserved - publicationEntry)
+                        .count();
+            }
+        }
+
+        const auto report = [](const char *label, auto &durations) {
+            std::sort(durations.begin(), durations.end());
+            const auto quantile = [&](double q) {
+                return durations[static_cast<std::size_t>(std::ceil(q * durations.size())) - 1];
+            };
+            double mean = 0;
+            for (double duration : durations) {
+                mean += duration / durations.size();
+            }
+            std::cout << label << " min " << durations.front() << ", Q50 " << quantile(0.50)
+                      << ", Q95 " << quantile(0.95) << ", Q99 " << quantile(0.99) << ", max "
+                      << durations.back() << ", mean " << mean << " ms\n";
+        };
+        std::cout << std::fixed << std::setprecision(6)
+                  << "UMA audio publication -> host-observed GPU spectrum completion: " << samples
+                  << " samples, " << warmup << " warmup, " << left.size() << " frames/block at "
+                  << settings.sampleRate << " Hz, " << settings.knots << " knots\n";
+        report("Publication-return endpoint", publicationReturnMs);
+        report("Writer-entry endpoint", publicationEntryMs);
+        std::cout
+            << "The UMA release publication lies between writer entry and return; these endpoints "
+               "bracket publication-to-host-observed completion. Completion is timed after "
+               "synchronous Metal dispatch waits for its command buffer, including host wakeup. "
+               "Serial synthetic audio producer, no frame pacing or concurrent producer; excludes "
+               "audio capture/block accumulation, FFT window age, rendering, presentation and "
+               "scanout. Display unavailable; audio-to-photon latency is not measured.\n";
+        return 0;
     }
 }

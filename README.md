@@ -136,6 +136,7 @@ Audio-thread communication is strictly lock-free and cache-line aligned:
 - **`MidiLearnMapper`** — Lock-free arm/bind routing across all 16 MIDI channels &times; 128 CC slots.
 - **`TelemetryRing<T, N>`** — Single-producer, single-consumer power-of-two ring buffer with cache-line-padded read/write/drop counters.
 - **GPU Visualizers** — `GpuSpectrum` (4096-point FFT + 128-row scrolling waterfall), `GpuScope` (hysteresis trigger + `PhosphorBuffer` decay), `GpuFilterCurve` (up to 16 cascaded biquad sections), and `GpuLoudnessMeter` (momentary, short-term, integrated LUFS, 4&times; true peak, and stereo RMS).
+- **UMA spectrum timing** — `telemetry_gpu` measures 512 warmed publication-to-host-observed GPU completion intervals, brackets the release publication with writer entry/return timestamps, and validates the completed sequence and spectrum generation. This synthetic serial-producer measurement includes command submission and host wakeup, but excludes block accumulation, FFT window age, frame pacing, drawing and display scanout. It does not certify audio-to-photon latency.
 
 ---
 

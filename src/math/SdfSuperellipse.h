@@ -91,4 +91,23 @@ struct SquircleSample {
     }
     return {(radial - 1) / norm, gradient * (1 / norm)};
 }
+
+[[nodiscard]] inline SquircleSample sampleCornerSquircle(Vector2 p, Vector2 half, double power,
+                                                         double radius) noexcept {
+    const double r = std::clamp(radius, 0.0, std::min(half.x, half.y));
+    if (!(r > 0)) {
+        return sampleSquircle(p, half, power);
+    }
+    const double sx = p.x < 0 ? -1.0 : 1.0;
+    const double sy = p.y < 0 ? -1.0 : 1.0;
+    const Vector2 q{std::abs(p.x) - (half.x - r), std::abs(p.y) - (half.y - r)};
+    if (q.x > 0 && q.y > 0) {
+        const SquircleSample corner = sampleSquircle(q, {r, r}, power);
+        return {corner.distance, {corner.gradient.x * sx, corner.gradient.y * sy}};
+    }
+    if (q.x >= q.y) {
+        return {q.x - r, {sx, 0}};
+    }
+    return {q.y - r, {0, sy}};
+}
 }

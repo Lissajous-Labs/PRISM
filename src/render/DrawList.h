@@ -50,7 +50,7 @@ class DrawList {
 
     void roundedRect(RectF rect, math::CornerRadii radii, std::uint32_t color,
                      std::optional<BorderStyle> border = std::nullopt);
-    void squircle(RectF rect, float power, std::uint32_t color);
+    void squircle(RectF rect, float power, std::uint32_t color, float cornerRadius = 0);
     void arc(math::Vector2 center, float radius, float thickness, float midAngle,
              float halfAperture, math::ArcCap cap, std::uint32_t color);
     void capsule(math::Vector2 a, math::Vector2 b, float radius, std::uint32_t color);

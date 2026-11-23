@@ -193,11 +193,12 @@ void DrawList::roundedRect(RectF rect, math::CornerRadii radii, std::uint32_t co
     }
 }
 
-void DrawList::squircle(RectF rect, float power, std::uint32_t color) {
+void DrawList::squircle(RectF rect, float power, std::uint32_t color, float cornerRadius) {
     PrimitiveDesc &desc = emit(
         PrimitiveKind::squircle,
         {rect.x0 - aaMargin, rect.y0 - aaMargin, rect.x1 + aaMargin, rect.y1 + aaMargin}, color);
     desc.params[0] = power;
+    desc.params[1] = cornerRadius;
 }
 
 void DrawList::arc(math::Vector2 center, float radius, float thickness, float midAngle,

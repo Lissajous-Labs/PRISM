@@ -62,6 +62,29 @@ FieldSample sampleSquircle(float2 p, float2 half_, float power) {
     return result;
 }
 
+FieldSample sampleCornerSquircle(float2 p, float2 half_, float power, float radius) {
+    float r = clamp(radius, 0.0f, min(half_.x, half_.y));
+    if (!(r > 0.0f)) {
+        return sampleSquircle(p, half_, power);
+    }
+    float2 s = float2(p.x < 0.0f ? -1.0f : 1.0f, p.y < 0.0f ? -1.0f : 1.0f);
+    float2 q = abs(p) - (half_ - r);
+    FieldSample result;
+    if (q.x > 0.0f && q.y > 0.0f) {
+        result = sampleSquircle(q, float2(r), power);
+        result.gradient *= s;
+        return result;
+    }
+    if (q.x >= q.y) {
+        result.distance = q.x - r;
+        result.gradient = float2(s.x, 0.0f);
+    } else {
+        result.distance = q.y - r;
+        result.gradient = float2(0.0f, s.y);
+    }
+    return result;
+}
+
 float crossProduct(float2 a, float2 b) {
     return a.x * b.y - a.y * b.x;
 }

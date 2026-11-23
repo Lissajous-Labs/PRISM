@@ -269,7 +269,8 @@ ShadeResult shadePrimitive(const FrameView &frame, const PrimitiveDesc &desc, do
         break;
     case PrimitiveKind::squircle: {
         const LocalBox shape = rectBox(desc);
-        const auto sample = math::sampleSquircle(local - shape.center, shape.half, desc.params[0]);
+        const auto sample = math::sampleCornerSquircle(local - shape.center, shape.half,
+                                                       desc.params[0], desc.params[1]);
         result = solid(
             detail::scale(fillColor(frame, desc, local),
                           detail::gradientCoverage(transform, sample.distance, sample.gradient)));

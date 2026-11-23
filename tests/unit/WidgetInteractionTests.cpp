@@ -225,7 +225,7 @@ bool checkSteadyState() {
     static_cast<void>(cables.connect(a, 0, b, 1));
     widgets::GpuScope scope(128, 1 << 14);
     widgets::GpuSpectrum spectrum(128, 48000);
-    std::vector<float> block(widgets::spectrumSize);
+    std::vector<float> block(4096);
     render::DrawList list;
     backends::CpuRefSurface surface({{96, 64}});
     surface.reserveFrame(512, 512 * 24);

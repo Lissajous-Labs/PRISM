@@ -45,7 +45,7 @@ struct Workbench {
     std::deque<telemetry::LoudnessMeter> meters;
     std::vector<text::TextLayout> labels;
     text::TextLayout titleLayout;
-    std::vector<float> block = std::vector<float>(widgets::spectrumSize);
+    std::vector<float> block = std::vector<float>(4096);
     BenchText text;
     render::GradientTable gradients;
     std::uint32_t row = 0;
@@ -143,9 +143,7 @@ struct Workbench {
         }
         for (std::size_t i = 0; i < spectra.size(); ++i) {
             const float x = 1060.0f, y = 360.0f + 80 * static_cast<float>(i);
-            spectra[i].draw(list, {x, y, x + 200, y + 70}, static_cast<std::uint32_t>(11 + i), row,
-                            render::packColor(255, 255, 255, 255),
-                            render::packColor(255, 255, 255, 255));
+            spectra[i].draw(list, {x, y, x + 200, y + 70}, render::packColor(255, 255, 255, 255));
         }
         for (std::size_t i = 0; i < labels.size(); ++i) {
             const float x = 20.0f + 64 * static_cast<float>(i % 15);

@@ -32,7 +32,9 @@ int main() {
     scope.append(signal);
     scope.build(48);
     widgets::GpuSpectrum spectrum(256, rate);
-    spectrum.analyze(std::span(signal).first(widgets::spectrumSize), 1.0 / 60);
+    if (not spectrum.analyze(signal, 1.0 / 60)) {
+        return 1;
+    }
     spectrum.buildStrip(-90, 0);
     for (int row = 0; row < 40; ++row) {
         spectrum.appendWaterfallRow(-90, 0);
@@ -45,17 +47,12 @@ int main() {
     telemetry::LoudnessMeter meter(rate);
     meter.process(signal.data(), signal.data(), signal.size());
     render::GradientTable gradients;
-    const std::array<render::GradientStop, 2> stops{
-        render::GradientStop{0, render::packColor(255, 120, 40, 230)},
-        render::GradientStop{1, render::packColor(40, 60, 255, 40)}};
-    const auto row = gradients.add(stops, render::GradientSpace::oklab);
     const std::array<render::TextureView, 3> textures{scope.strip(), spectrum.strip(),
                                                       spectrum.waterfall()};
     render::DrawList list;
     list.roundedRect({0, 0, 512, 256}, {}, render::packColor(14, 16, 22, 255));
     scope.draw(list, {8, 8, 248, 120}, 0, 1.5f, render::packColor(80, 255, 160, 255));
-    spectrum.draw(list, {264, 8, 504, 120}, 1, row, render::packColor(255, 255, 255, 255),
-                  render::packColor(255, 255, 255, 255));
+    spectrum.draw(list, {264, 8, 504, 120}, render::packColor(255, 120, 40, 255));
     spectrum.drawWaterfall(list, {8, 136, 248, 248}, 2, render::packColor(255, 255, 255, 255));
     curve.draw(list, {264, 136, 472, 248}, 2, render::packColor(255, 200, 60, 255));
     widgets::drawLoudnessMeter(

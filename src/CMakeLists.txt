@@ -149,6 +149,8 @@ endif()
 
 add_library(prism_widgets STATIC
     telemetry/LoudnessMeter.cpp
+    telemetry/HalfBand.cpp
+    telemetry/SpectrumEstimator.cpp
     telemetry/UmaTelemetry.cpp
     widgets/GpuFilterCurve.cpp
     widgets/GpuNoiseEnvelope.cpp

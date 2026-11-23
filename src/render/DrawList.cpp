@@ -279,6 +279,25 @@ void DrawList::slugGlyph(RectF rect, RectF em, std::span<const float> blob, std:
     payload_.insert(payload_.end(), blob.begin(), blob.end());
 }
 
+void DrawList::spectrumCurve(RectF rect, std::span<const float> heights,
+                             std::span<const float> slopes, float strokeWidth,
+                             std::uint32_t color) {
+    const std::size_t count = std::min(heights.size(), slopes.size());
+    if (count < 2) {
+        return;
+    }
+    const float margin = strokeWidth * 0.5f + aaMargin;
+    PrimitiveDesc &desc =
+        emit(PrimitiveKind::spectrumCurve, {rect.x0, rect.y0 - margin, rect.x1, rect.y1}, color);
+    desc.params[0] = strokeWidth;
+    desc.params[1] = static_cast<float>(count);
+    desc.payloadOffset = appendPayload({rect.x0, rect.y0, rect.x1, rect.y1});
+    payload_.insert(payload_.end(), heights.begin(),
+                    heights.begin() + static_cast<std::ptrdiff_t>(count));
+    payload_.insert(payload_.end(), slopes.begin(),
+                    slopes.begin() + static_cast<std::ptrdiff_t>(count));
+}
+
 void DrawList::plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
                          std::uint32_t color, float scrollColumns, float edgeFade, bool fillBelow) {
     PrimitiveDesc &desc = emit(PrimitiveKind::plotStrip, rect, color);

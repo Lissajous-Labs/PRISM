@@ -2,35 +2,38 @@
 
 #include "render/DrawList.h"
 #include "render/FrameView.h"
-#include "telemetry/Fft.h"
+#include "telemetry/SpectrumEstimator.h"
 
-#include <complex>
 #include <cstdint>
 #include <span>
 #include <vector>
 
 namespace prism::widgets {
-inline constexpr std::size_t spectrumSize = 4096;
-
 class GpuSpectrum {
   public:
-    GpuSpectrum(std::uint32_t columns, double sampleRate, float fallRate = 24,
-                float floorDb = -120);
+    GpuSpectrum(std::uint32_t columns, double sampleRate, double tiltDbPerOctave = 4.5);
 
-    void analyze(std::span<const float> block, double dt);
+    void push(std::span<const float> samples) noexcept { estimator_.push(samples); }
+    bool analyze(std::span<const float> block, double dt) noexcept;
     void buildStrip(float minDb, float maxDb);
     void appendWaterfallRow(float minDb, float maxDb);
 
     [[nodiscard]] std::span<const float> levels() const noexcept { return levels_; }
-    [[nodiscard]] double columnFrequency(std::uint32_t column) const noexcept;
+    [[nodiscard]] std::span<const float> peaks() const noexcept { return peaks_; }
+    [[nodiscard]] double columnFrequency(std::uint32_t column) const noexcept {
+        return estimator_.frequencies()[column];
+    }
+    [[nodiscard]] const telemetry::SpectrumEstimator &estimator() const noexcept {
+        return estimator_;
+    }
     [[nodiscard]] render::TextureView strip() const noexcept { return {columns_, 1, 2, strip_}; }
     [[nodiscard]] render::TextureView waterfall() const noexcept {
         return {columns_, waterfallRows, 1, waterfall_};
     }
     [[nodiscard]] std::uint32_t waterfallOffset() const noexcept { return waterfallOffset_; }
 
-    void draw(render::DrawList &list, render::RectF rect, std::uint32_t stripSlot,
-              std::uint32_t gradientRow, std::uint32_t lineColor, std::uint32_t fillColor) const;
+    void draw(render::DrawList &list, render::RectF rect, std::uint32_t color,
+              float strokeWidth = 1.5f);
     void drawWaterfall(render::DrawList &list, render::RectF rect, std::uint32_t slot,
                        std::uint32_t tint) const;
 
@@ -38,17 +41,19 @@ class GpuSpectrum {
 
   private:
     std::uint32_t columns_;
-    double sampleRate_;
-    float fallRate_;
-    float floorDb_;
-    telemetry::Fft fft_;
-    std::vector<double> window_;
-    std::vector<double> input_;
-    std::vector<std::complex<double>> spectrum_;
+    telemetry::SpectrumEstimator estimator_;
     std::vector<float> levels_;
-    std::vector<float> instant_;
+    std::vector<float> peaks_;
+    std::vector<float> units_;
+    std::vector<float> unitSlopes_;
+    std::vector<float> heights_;
+    std::vector<float> slopes_;
     std::vector<float> strip_;
     std::vector<float> waterfall_;
+    std::vector<double> positions_;
+    std::vector<double> unitValues_;
+    std::vector<double> unitDerivatives_;
     std::uint32_t waterfallOffset_ = 0;
+    float range_ = 1;
 };
 }

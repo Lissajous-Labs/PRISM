@@ -64,6 +64,8 @@ class DrawList {
     void glyphQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint32_t texture,
                    std::uint32_t color, float pixelRange, float ppem, float background);
     void slugGlyph(RectF rect, RectF em, std::span<const float> blob, std::uint32_t color);
+    void spectrumCurve(RectF rect, std::span<const float> heights, std::span<const float> slopes,
+                       float strokeWidth, std::uint32_t color);
     void fillPath(const VectorPath &path, std::uint32_t color, FillRule rule = FillRule::nonZero);
     void strokePath(const VectorPath &path, const StrokeStyle &style, std::uint32_t color);
     void backdropBlur(RectF rect, math::CornerRadii radii, float sigma);

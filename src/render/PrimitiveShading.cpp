@@ -1,5 +1,6 @@
 #include "render/PrimitiveShading.h"
 
+#include "math/Pchip.h"
 #include "math/Sdf.h"
 #include "math/ShadowMath.h"
 #include "math/StemDarkening.h"
@@ -346,6 +347,34 @@ ShadeResult shadePrimitive(const FrameView &frame, const PrimitiveDesc &desc, do
         const auto blob = frame.payload.subspan(at + 4);
         result = solid(detail::scale(detail::decodeColor(desc.color),
                                      slugCoverage(blob, em, pixelsPerEmX, pixelsPerEmY)));
+        break;
+    }
+    case PrimitiveKind::spectrumCurve: {
+        const std::uint32_t at = desc.payloadOffset;
+        const auto count = static_cast<std::uint32_t>(desc.params[1]);
+        const double x0 = frame.payload[at];
+        const double top = frame.payload[at + 1];
+        const double x1 = frame.payload[at + 2];
+        const double bottom = frame.payload[at + 3];
+        const double spacing = (x1 - x0) / (count - 1);
+        const auto segment = static_cast<std::uint32_t>(
+            std::clamp(std::floor((local.x - x0) / spacing), 0.0, static_cast<double>(count - 2)));
+        const double t =
+            std::clamp((local.x - x0 - segment * spacing) / std::max(spacing, 1e-5), 0.0, 1.0);
+        const double y0 = frame.payload[at + 4 + segment];
+        const double y1 = frame.payload[at + 5 + segment];
+        const double m0 = frame.payload[at + 4 + count + segment];
+        const double m1 = frame.payload[at + 5 + count + segment];
+        const double s = math::pchipEvaluate(y0, y1, m0, m1, spacing, t);
+        const double ds = math::pchipDerivative(y0, y1, m0, m1, spacing, t);
+        const double signedDistance = (s - local.y) / std::sqrt(1 + ds * ds);
+        const double stroke =
+            std::clamp(0.5 * desc.params[0] - std::abs(signedDistance) + 0.5, 0.0, 1.0);
+        const double fillMask = std::clamp(0.5 - signedDistance, 0.0, 1.0);
+        const double depth = std::clamp((local.y - s) / std::max(bottom - top, 1e-5), 0.0, 1.0);
+        const double fill = fillMask * (0.28 + (0.02 - 0.28) * depth);
+        result =
+            solid(detail::scale(detail::decodeColor(desc.color), stroke + fill * (1 - stroke)));
         break;
     }
     }

@@ -90,6 +90,7 @@ constant uint kindPlot = 11;
 constant uint kindHalftone = 12;
 constant uint kindFormant = 14;
 constant uint kindSlug = 15;
+constant uint kindSpectrum = 16;
 
 float2 payloadPoint(device const float *payload, uint offset) {
     return float2(payload[offset], payload[offset + 1]);

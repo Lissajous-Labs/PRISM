@@ -23,10 +23,11 @@ enum class PrimitiveKind : std::uint8_t {
     halftoneField = 12,
     wavetable3d = 13,
     formantCurve = 14,
-    glyphSlug = 15
+    glyphSlug = 15,
+    spectrumCurve = 16
 };
 
-inline constexpr std::uint32_t primitiveKindCount = 16;
+inline constexpr std::uint32_t primitiveKindCount = 17;
 inline constexpr float aaMargin = 1.5f;
 enum class GradientShape : std::uint8_t { linear = 0, radial = 1, conic = 2 };
 

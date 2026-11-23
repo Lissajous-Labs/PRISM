@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Realtime.h"
+#include "telemetry/HalfBand.h"
 #include "telemetry/LoudnessMeter.h"
 
 #include <array>
@@ -14,7 +15,6 @@ inline constexpr std::uint32_t umaSlots = 3;
 inline constexpr std::uint32_t umaBands = 4;
 inline constexpr std::uint32_t umaCapacity = 1u << 14;
 inline constexpr std::uint32_t umaMask = umaCapacity - 1;
-inline constexpr std::uint32_t halfBandTaps = 23;
 
 struct UmaSlot {
     std::atomic<std::uint64_t> frames{0};
@@ -41,8 +41,6 @@ struct alignas(64) UmaLayout {
 
 inline constexpr std::size_t umaScopeOffset = offsetof(UmaLayout, scope);
 inline constexpr std::size_t umaBandOffset = offsetof(UmaLayout, bands);
-
-[[nodiscard]] std::array<double, halfBandTaps> designHalfBand() noexcept;
 
 [[nodiscard]] inline bool snapshot(const UmaLayout &layout, UmaSnapshot &out) noexcept {
     for (std::uint32_t attempt = 0; attempt < 8; ++attempt) {
@@ -80,19 +78,12 @@ class UmaWriter {
                std::span<const float> right) noexcept PRISM_NONBLOCKING;
 
   private:
-    struct Stage {
-        std::array<double, 2 * halfBandTaps> history{};
-        std::uint32_t position = 0;
-        bool odd = false;
-    };
-
     void push(std::uint32_t band, float value) noexcept;
-    void decimate(std::uint32_t stage, double value) noexcept;
 
     UmaLayout &layout_;
     LoudnessMeter loudness_;
     std::array<double, halfBandTaps> taps_;
-    std::array<Stage, umaBands - 1> stages_{};
+    std::array<HalfBandDecimator, umaBands - 1> stages_;
     std::uint64_t frames_ = 0;
     std::array<std::uint64_t, umaBands> bandFrames_{};
 };

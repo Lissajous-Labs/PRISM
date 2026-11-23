@@ -106,43 +106,48 @@ bool checkLoudness() {
 }
 
 bool checkSpectrum() {
-    widgets::GpuSpectrum spectrum(256, 48000);
-    const double binFrequency = 86 * 48000.0 / 4096;
-    const auto tone = sine(48000, binFrequency, -6.0206, 4096.0 / 48000);
-    spectrum.analyze(tone, 1.0 / 60);
-    std::uint32_t nearest = 0;
+    widgets::GpuSpectrum spectrum(256, 48000, 0);
+    const auto tone = sine(48000, 1000, -6.0206, 1.0);
+    if (!spectrum.analyze(tone, 1.0 / 60)) {
+        return false;
+    }
+    const auto &estimator = spectrum.estimator();
+    std::uint32_t loudest = 0;
+    double total = 0;
     for (std::uint32_t c = 0; c < 256; ++c) {
-        if (std::abs(spectrum.columnFrequency(c) - binFrequency) <
-            std::abs(spectrum.columnFrequency(nearest) - binFrequency)) {
-            nearest = c;
-        }
+        loudest = spectrum.levels()[c] > spectrum.levels()[loudest] ? c : loudest;
+        const double ratio = std::pow(20000.0 / 20.0, 1.0 / 255);
+        const double width = estimator.frequencies()[c] * (std::sqrt(ratio) - 1 / std::sqrt(ratio));
+        total += estimator.power()[c] * width;
     }
-    float best = -200;
-    for (std::uint32_t c = nearest - 1; c <= nearest + 1; ++c) {
-        best = std::max(best, spectrum.levels()[c]);
-    }
+    const double totalDb = 10 * std::log10(total);
+    const double expectedDb = 10 * std::log10(0.5 * 0.25);
+    const double knotRatio = spectrum.columnFrequency(loudest) / 1000;
+
     const auto decayed = [&](double fps) {
-        widgets::GpuSpectrum ballistic(64, 48000);
-        const auto loud = sine(48000, 1000, 0, 4096.0 / 48000);
-        ballistic.analyze(loud, 1 / fps);
-        std::uint32_t loudest = 0;
+        widgets::GpuSpectrum ballistic(64, 48000, 0);
+        static_cast<void>(ballistic.analyze(sine(48000, 1000, 0, 1.0), 1 / fps));
+        std::uint32_t peak = 0;
         for (std::uint32_t c = 0; c < 64; ++c) {
-            loudest = ballistic.levels()[c] > ballistic.levels()[loudest] ? c : loudest;
+            peak = ballistic.levels()[c] > ballistic.levels()[peak] ? c : peak;
         }
-        const float start = ballistic.levels()[loudest];
-        const std::vector<float> silenceBlock(4096, 0.0f);
+        const double start = ballistic.levels()[peak];
+        ballistic.push(std::vector<float>(48000, 0.0f));
         for (int frame = 0; frame < static_cast<int>(fps); ++frame) {
-            ballistic.analyze(silenceBlock, 1 / fps);
+            static_cast<void>(ballistic.analyze({}, 1 / fps));
         }
-        return start - ballistic.levels()[loudest];
+        return start - ballistic.estimator().levels()[peak];
     };
-    const float at60 = decayed(60);
-    const float at144 = decayed(144);
+    const double at60 = decayed(60);
+    const double at120 = decayed(120);
+    const double at144 = decayed(144);
     spectrum.buildStrip(-90, 0);
     spectrum.appendWaterfallRow(-90, 0);
-    std::cout << "Spectrum peak " << best << " dB; decay 60 fps " << at60 << " dB, 144 fps "
-              << at144 << " dB\n";
-    return within(best, -6.0206f, 0.1f) && within(at60, 24, 1e-3f) && within(at144, 24, 1e-3f) &&
+    std::cout << "Spectrum tone power " << totalDb << " dB (expected " << expectedDb
+              << "), loudest knot ratio " << knotRatio << "; release over 1 s: 60 fps " << at60
+              << " dB, 120 fps " << at120 << ", 144 fps " << at144 << '\n';
+    return std::abs(totalDb - expectedDb) < 0.1 && std::abs(knotRatio - 1) < 0.03 &&
+           std::abs(at60 - at120) < 1e-6 && std::abs(at60 - at144) < 1e-6 && at60 > 20 &&
            spectrum.waterfallOffset() == 1;
 }
 

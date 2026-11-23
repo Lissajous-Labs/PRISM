@@ -435,6 +435,34 @@ float shadeSlugGpu(PrimitiveDesc d, device const float *payload, TransformRecord
     return saturate(max(weighted, min(abs(horizontal), abs(vertical))));
 }
 
+float shadeSpectrumGpu(PrimitiveDesc d, device const float *payload, float2 local) {
+    uint at = d.payloadOffset;
+    uint count = uint(d.params[1]);
+    float x0 = payload[at];
+    float top = payload[at + 1];
+    float x1 = payload[at + 2];
+    float bottom = payload[at + 3];
+    float spacing = (x1 - x0) / float(count - 1u);
+    uint i = uint(clamp(floor((local.x - x0) / spacing), 0.0f, float(count - 2u)));
+    float t = clamp((local.x - x0 - float(i) * spacing) / max(spacing, 1e-5f), 0.0f, 1.0f);
+    float t2 = t * t;
+    float t3 = t2 * t;
+    float y0 = payload[at + 4u + i];
+    float y1 = payload[at + 5u + i];
+    float m0 = payload[at + 4u + count + i];
+    float m1 = payload[at + 5u + count + i];
+    float s = (2.0f * t3 - 3.0f * t2 + 1.0f) * y0 + (t3 - 2.0f * t2 + t) * spacing * m0 +
+              (-2.0f * t3 + 3.0f * t2) * y1 + (t3 - t2) * spacing * m1;
+    float ds = ((6.0f * t2 - 6.0f * t) * y0 + (3.0f * t2 - 4.0f * t + 1.0f) * spacing * m0 +
+                (-6.0f * t2 + 6.0f * t) * y1 + (3.0f * t2 - 2.0f * t) * spacing * m1) /
+               spacing;
+    float signedDistance = (s - local.y) * rsqrt(1.0f + ds * ds);
+    float stroke = clamp(0.5f * d.params[0] - abs(signedDistance) + 0.5f, 0.0f, 1.0f);
+    float fillMask = clamp(0.5f - signedDistance, 0.0f, 1.0f);
+    float fillGradient = fillMask * mix(0.28f, 0.02f, saturate((local.y - s) / max(bottom - top, 1e-5f)));
+    return stroke + fillGradient * (1.0f - stroke);
+}
+
 ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gradients,
                         texture2d<float> texture, float2 physical, float4 fill, float4 border,
                         float4 shape, float reach) {
@@ -456,6 +484,8 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
         result.color = shadeFormantGpu(d, frame.payload, t, local, texture, physical);
     } else if (fullShading && kind == kindSlug) {
         result.color = fill * shadeSlugGpu(d, frame.payload, t, local);
+    } else if (fullShading && kind == kindSpectrum) {
+        result.color = fill * shadeSpectrumGpu(d, frame.payload, local);
     } else if (analyticShading && kind == kindShadow) {
         LocalBox box = rectBox(d);
         float blurred =

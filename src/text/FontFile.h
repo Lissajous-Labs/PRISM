@@ -4,6 +4,7 @@
 #include "text/OpenTypeLayout.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <utility>
@@ -24,6 +25,8 @@ struct VariationAxis {
     double maximum;
 };
 
+class NativeFace;
+
 class FontFile {
   public:
     [[nodiscard]] static std::optional<FontFile> parse(std::vector<std::uint8_t> bytes);
@@ -36,6 +39,11 @@ class FontFile {
     bool setVariation(std::span<const std::pair<std::uint32_t, double>> settings);
     void outline(std::uint16_t glyph, double scale, render::VectorPath &path) const;
     [[nodiscard]] const OpenTypeLayout &layout() const noexcept { return layout_; }
+    [[nodiscard]] std::span<const std::uint8_t> bytes() const noexcept { return bytes_; }
+    [[nodiscard]] std::span<const std::pair<std::uint32_t, double>> variation() const noexcept {
+        return variation_;
+    }
+    [[nodiscard]] NativeFace *native() const;
 
   private:
     struct Tables {
@@ -50,6 +58,9 @@ class FontFile {
 
     std::vector<std::uint8_t> bytes_;
     FontMetrics metrics_{1000, 800, -200, 0};
+    std::vector<std::pair<std::uint32_t, double>> variation_;
+    mutable std::shared_ptr<NativeFace> native_;
+    mutable bool nativeTried_ = false;
     Tables tables_;
     std::uint16_t glyphCount_ = 0;
     std::uint16_t metricCount_ = 0;

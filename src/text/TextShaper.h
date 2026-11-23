@@ -2,6 +2,7 @@
 
 #include "text/Bidi.h"
 #include "text/FontFile.h"
+#include "text/NativeFace.h"
 
 #include <cstdint>
 #include <span>
@@ -25,6 +26,8 @@ struct PositionedGlyph {
     float x;
     float y;
     float advance;
+    float offsetX = 0;
+    float offsetY = 0;
 };
 
 struct LineInfo {

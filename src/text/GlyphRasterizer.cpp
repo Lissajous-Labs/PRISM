@@ -2,6 +2,7 @@
 
 #include "render/vector/FineRaster.h"
 #include "render/vector/VectorPath.h"
+#include "text/NativeFace.h"
 
 #include <algorithm>
 #include <cmath>
@@ -60,6 +61,10 @@ Coverage coverageOf(const FontFile &font, std::uint16_t glyph, double scaleX, do
 
 void rasterizeAlpha(const FontFile &font, std::uint16_t glyph, float pixelSize, std::uint32_t phase,
                     GlyphBitmap &bitmap) {
+    if (const NativeFace *native = font.native();
+        native != nullptr && native->rasterize(glyph, pixelSize, phase, false, bitmap)) {
+        return;
+    }
     const double scale = pixelSize / font.metrics().unitsPerEm;
     Coverage coverage =
         coverageOf(font, glyph, scale, scale, static_cast<double>(phase) / subpixelPhases);
@@ -74,6 +79,10 @@ void rasterizeAlpha(const FontFile &font, std::uint16_t glyph, float pixelSize, 
 
 void rasterizeLcd(const FontFile &font, std::uint16_t glyph, float pixelSize, std::uint32_t phase,
                   GlyphBitmap &bitmap) {
+    if (const NativeFace *native = font.native();
+        native != nullptr && native->rasterize(glyph, pixelSize, phase, true, bitmap)) {
+        return;
+    }
     const double scale = pixelSize / font.metrics().unitsPerEm;
     const Coverage sub = coverageOf(font, glyph, 3 * scale, scale, 3.0 * phase / subpixelPhases);
     if (sub.width == 0) {

@@ -179,6 +179,9 @@ bool FontFile::setVariation(std::span<const std::pair<std::uint32_t, double>> se
     if (axes_.empty()) {
         return false;
     }
+    variation_.assign(settings.begin(), settings.end());
+    native_.reset();
+    nativeTried_ = false;
     for (std::size_t a = 0; a < axes_.size(); ++a) {
         const VariationAxis &axis = axes_[a];
         double value = axis.defaultValue;

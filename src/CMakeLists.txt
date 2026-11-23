@@ -104,6 +104,7 @@ add_library(prism_text STATIC
     text/GlyphRasterizer.cpp
     text/LineBreak.cpp
     text/MtsdfGenerator.cpp
+    text/NativeFace.cpp
     text/SlugGlyph.cpp
     text/OpenTypeLayout.cpp
     text/TextShaper.cpp
@@ -111,6 +112,32 @@ add_library(prism_text STATIC
     text/UtfFastPath.cpp
 )
 target_link_libraries(prism_text PUBLIC prism_render)
+
+if(PRISM_NATIVE_TEXT)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(PRISM_FREETYPE REQUIRED IMPORTED_TARGET freetype2)
+    find_library(PRISM_FREETYPE_STATIC libfreetype.a HINTS ${PRISM_FREETYPE_LIBRARY_DIRS} REQUIRED)
+    find_library(PRISM_PNG_STATIC libpng16.a HINTS /opt/homebrew/opt/libpng/lib REQUIRED)
+    find_library(PRISM_BROTLIDEC_STATIC libbrotlidec.a HINTS /opt/homebrew/opt/brotli/lib REQUIRED)
+    find_library(PRISM_BROTLICOMMON_STATIC libbrotlicommon.a HINTS /opt/homebrew/opt/brotli/lib
+                 REQUIRED)
+    if(NOT TARGET prism_harfbuzz)
+        set(PRISM_HARFBUZZ_SOURCE_DIR
+            "${PROJECT_SOURCE_DIR}/../JUCE/modules/juce_graphics/fonts/harfbuzz"
+            CACHE PATH "HarfBuzz amalgamation directory")
+        add_library(prism_harfbuzz STATIC "${PRISM_HARFBUZZ_SOURCE_DIR}/harfbuzz.cc")
+        target_include_directories(prism_harfbuzz SYSTEM PUBLIC "${PRISM_HARFBUZZ_SOURCE_DIR}")
+        target_compile_definitions(prism_harfbuzz PRIVATE HB_NO_PRAGMA_GCC_DIAGNOSTIC_WARNING
+                                   HB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR)
+        target_compile_options(prism_harfbuzz PRIVATE -w)
+        target_compile_features(prism_harfbuzz PRIVATE cxx_std_17)
+    endif()
+    target_compile_definitions(prism_text PRIVATE PRISM_NATIVE_TEXT=1)
+    target_include_directories(prism_text PRIVATE ${PRISM_FREETYPE_INCLUDE_DIRS})
+    target_link_libraries(prism_text PRIVATE prism_harfbuzz ${PRISM_FREETYPE_STATIC}
+                          ${PRISM_PNG_STATIC} ${PRISM_BROTLIDEC_STATIC}
+                          ${PRISM_BROTLICOMMON_STATIC} z bz2)
+endif()
 
 add_library(prism_scene STATIC
     scene/SceneGraph.cpp

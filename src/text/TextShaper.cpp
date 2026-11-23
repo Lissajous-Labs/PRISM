@@ -52,12 +52,22 @@ void TextShaper::itemize(std::uint32_t begin, std::uint32_t end, std::vector<Run
 void TextShaper::shapeRun(const Run &run, const ShapeRequest &request,
                           std::vector<PositionedGlyph> &glyphs) const {
     const FontFile &font = *fonts_[run.font];
+    std::vector<std::uint32_t> features{tag("liga"), tag("kern")};
+    features.insert(features.end(), request.features.begin(), request.features.end());
+    if (const NativeFace *native = font.native()) {
+        std::vector<NativeGlyph> shapedNative;
+        native->shape(std::span(codepoints_).subspan(run.begin, run.end - run.begin), run.begin,
+                      run.level % 2 == 1, features, request.size, shapedNative);
+        for (const NativeGlyph &glyph : shapedNative) {
+            glyphs.push_back({glyph.glyph, run.font, glyph.cluster, 0, 0, glyph.advance,
+                              glyph.offsetX, glyph.offsetY});
+        }
+        return;
+    }
     std::vector<ShapedGlyph> shaped;
     for (std::uint32_t i = run.begin; i < run.end; ++i) {
         shaped.push_back({font.glyphIndex(codepoints_[i]), i});
     }
-    std::vector<std::uint32_t> features{tag("liga"), tag("kern")};
-    features.insert(features.end(), request.features.begin(), request.features.end());
     font.layout().substitute(features, shaped);
     const float scale = request.size / font.metrics().unitsPerEm;
     const std::size_t first = glyphs.size();
@@ -164,8 +174,8 @@ void TextShaper::layout(const ShapeRequest &request, TextLayout &result) {
             for (std::size_t g = first; g < result.glyphs.size(); ++g) {
                 const bool trailingSpace = codepoints_[result.glyphs[g].cluster] == ' ' &&
                                            result.glyphs[g].cluster + 1 == end;
-                result.glyphs[g].x = pen;
-                result.glyphs[g].y = baseline;
+                result.glyphs[g].x = pen + result.glyphs[g].offsetX;
+                result.glyphs[g].y = baseline - result.glyphs[g].offsetY;
                 pen += trailingSpace ? 0 : result.glyphs[g].advance;
             }
         }

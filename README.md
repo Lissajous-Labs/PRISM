@@ -14,7 +14,7 @@
 <p align="center">
   <code>C++23</code> &nbsp;&middot;&nbsp;
   <code>Metal &amp; CPU Reference</code> &nbsp;&middot;&nbsp;
-  <code>Zero External Dependencies</code> &nbsp;&middot;&nbsp;
+  <code>Optional Native Typography</code> &nbsp;&middot;&nbsp;
   <code>macOS 13+ &amp; Linux</code>
 </p>
 
@@ -31,7 +31,7 @@
 
 ## Overview
 
-**PRISM** is engineered from the ground up with zero third-party dependencies for high-precision graphical interfaces, audio plugins, and modular instrument canvases. Every layer—from perceptual color math and analytical signed distance fields to OpenType text shaping, stylesheet resolution, and lock-free audio telemetry—is implemented cleanly in standard C++23 with strict cross-backend parity.
+**PRISM** is a C++23 rendering and audio-visualization engine with a portable reference implementation. Native typography uses HarfBuzz shaping and FreeType autohinting when `PRISM_NATIVE_TEXT` is enabled; the built-in font parser and rasterizer remain available without those dependencies.
 
 | Pillar | Design Highlights |
 | :--- | :--- |
@@ -125,7 +125,7 @@ Shaders under `shaders/metal/` are embedded into `ShaderSources.cpp` at configur
 
 ### Typography Pipeline
 
-`prism_text` implements the complete text pipeline without external shaping or rasterization libraries: binary font parsing (`FontFile`), UTF-8 fast paths, Unicode bidirectional reordering (`Bidi`), line breaking, OpenType feature application (`OpenTypeLayout`), cached fallback-chain shaping (`TextShaper`), stem-darkened coverage rasterization, multi-channel signed distance fields (`MtsdfGenerator`), and a multi-page shelf-packed `GlyphAtlas` across seven height classes (`16`–`128` px) with LRU shelf eviction.
+`prism_text` combines binary font parsing (`FontFile`), Unicode bidirectional reordering, line breaking, fallback-chain shaping, coverage rasterization, MTSDF and Slug rendering, and a tiled multi-page glyph atlas. Native text uses HarfBuzz contextual shaping, kerning and glyph offsets, plus FreeType light autohinting and four subpixel phases for tier-one coverage. Ink-free native bitmaps are cached as empty glyphs rather than inserted into atlas tiles.
 
 ### Real-Time Audio Telemetry & Visualizers
 
@@ -145,6 +145,7 @@ Audio-thread communication is strictly lock-free and cache-line aligned:
 
 - **CMake** `3.25` or newer and **Ninja**
 - **C++23** compiler (Apple Clang on macOS `13.0+` with Metal/AppKit/QuartzCore, Clang or GCC on Linux, or MSVC on Windows)
+- Native typography (enabled by default on Apple): `pkg-config`, static FreeType, libpng, Brotli, zlib and bzip2. Supply a `prism_harfbuzz` target, or set `PRISM_HARFBUZZ_SOURCE_DIR` to a HarfBuzz amalgamation directory containing `harfbuzz.cc`. The GSUS checkout defaults to its sibling JUCE source; GSUS itself shares JUCE's compiled HarfBuzz instead of defining duplicate symbols. Use `-DPRISM_NATIVE_TEXT=OFF` for the dependency-free built-in path.
 
 ### Bootstrap & Test
 
@@ -197,6 +198,7 @@ PRISM enforces correctness, numerical fidelity, and repository hygiene automatic
 - **Hardware Frame Clock** — `PassiveSurfaceHost::startFrameClock()` delivers display target timestamps on the main thread through a non-owning `FrameTick` callback. macOS 14+ uses the view-associated `CADisplayLink` with a preferred 60–120 Hz range; macOS 13 uses `CVDisplayLink` and a coalescing main-runloop source rather than dispatching heap-backed blocks. `preferLegacy` exercises the fallback explicitly. Stop or detach invalidates either clock before releasing its context; callers must stop the clock before destroying callback state. `frame_clock` verifies monotonic timestamps, main-thread delivery, stop/restart and detach for both paths. This verifies native pacing integration, not a 120 Hz presentation-jitter bound.
 - **Presentation Pacing Limits** — Native presentation uses `afterMinimumDuration:max(0, displayPeriod - 0.0005)` with the period supplied by the active display link. Presentation-rate and performance certification require measurements on the specification's target hardware. Those release gates remain open.
 - **Direct Native Frames** — Full-damage frames render primitives, paths and wavetable meshes directly into the framebuffer-only Display P3 drawable after compute encoding, without a presentation-copy pass. Source-over, additive and replace colors convert before blending. On programmable-blending devices, screen, multiply and LCD compositing transform fetched destination colors back to linear sRGB, preserve per-channel blend semantics, then return linear Display P3. Devices without programmable blending retain backing for those modes. Backdrop effects, bloom and partial-damage frames use linear-sRGB backing and render-based presentation. Returning from direct rendering rebuilds stale backing before incremental updates. Readback returns `false` for a direct-only frame; render an offscreen frame for an explicit snapshot. `presentation` checks direct colors, nonlinear blends and unequal LCD channel coverage against CPU equations over a translucent colored destination; `passive_surface` exercises native direct rendering and backing recovery.
+- **Native Typography** — `native_text` verifies Latin kerning, Arabic contextual forms and visual order, cap-height/baseline coverage, and quarter-pixel phase centroid motion. System-font tests skip with code `77` when their font files or native text support are unavailable.
 - **Allocation Guard** — `AllocGuard` verifies zero unexpected heap allocations across hot-path unit tests.
 - **Strict Compiler & Lint Gates** — Compiled with `-Wall -Wextra -Wpedantic -Werror` (`/W4 /WX` on MSVC), formatted with LLVM-style `.clang-format` (4-space indent, 100-column width), and checked for comment-free source files:
 

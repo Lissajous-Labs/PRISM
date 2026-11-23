@@ -71,7 +71,8 @@ std::optional<AtlasSlot> GlyphAtlas::insert(std::uint64_t key, std::uint32_t wid
                                             std::uint64_t frame) {
     const auto heightClass = static_cast<std::uint32_t>(
         std::lower_bound(shelfHeights.begin(), shelfHeights.end(), height) - shelfHeights.begin());
-    if (heightClass >= shelfHeights.size() || width > pageSize_) {
+    if (heightClass >= shelfHeights.size() || width > pageSize_ || width == 0 || height == 0 ||
+        texels.size() < static_cast<std::size_t>(width) * height * channels_) {
         return std::nullopt;
     }
     std::uint64_t &mask = available_[heightClass];

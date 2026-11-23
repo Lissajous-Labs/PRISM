@@ -13,6 +13,7 @@ option(PRISM_REALTIME_SANITIZE "Enable the realtime sanitizer on nonblocking pat
 option(PRISM_BUILD_TESTS "Build the framework test suite" ${PROJECT_IS_TOP_LEVEL})
 option(PRISM_ENABLE_STUDIO "Build the live studio tooling" ON)
 option(PRISM_BUILD_BENCH "Build the workload benchmark gates" OFF)
+option(PRISM_NATIVE_TEXT "Shape with HarfBuzz and rasterize tier-one glyphs with FreeType" ${APPLE})
 
 add_library(prism_options INTERFACE)
 target_compile_features(prism_options INTERFACE cxx_std_23)

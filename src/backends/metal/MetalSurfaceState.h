@@ -86,6 +86,8 @@ struct MetalSurfaceState : MetalFrameResources {
     std::vector<std::array<std::int32_t, 2>> scratchSlots;
     std::vector<unsigned char> tileBytes;
     std::vector<TileCopy> tileCopies;
+    std::vector<TextureGrowth> growths;
+    id<MTLBuffer> zeroRows = nil;
     id<MTLTexture> scratchColor = nil;
     id<MTLTexture> scratchDepth = nil;
     bool lost = false;

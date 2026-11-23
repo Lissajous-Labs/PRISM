@@ -37,6 +37,47 @@ inline void upload(id<MTLDevice> device, id<MTLBuffer> __strong &buffer, const v
     }
 }
 
+inline constexpr std::uint32_t zeroBandRows = 64;
+
+struct TextureGrowth {
+    std::size_t slot;
+    id<MTLTexture> source;
+    std::uint32_t copiedRows;
+    std::uint32_t width;
+    std::uint32_t height;
+    std::size_t pixelBytes;
+};
+
+inline MTLPixelFormat nativeFormat(hal::PixelFormat format, std::size_t &pixelBytes) noexcept {
+    switch (format) {
+    case hal::PixelFormat::r8Unorm:
+        pixelBytes = 1;
+        return MTLPixelFormatR8Unorm;
+    case hal::PixelFormat::r16Float:
+        pixelBytes = 2;
+        return MTLPixelFormatR16Float;
+    case hal::PixelFormat::rgba16Float:
+        pixelBytes = 8;
+        return MTLPixelFormatRGBA16Float;
+    case hal::PixelFormat::rg32Float:
+        pixelBytes = 8;
+        return MTLPixelFormatRG32Float;
+    default:
+        pixelBytes = 16;
+        return MTLPixelFormatRGBA32Float;
+    }
+}
+
+inline id<MTLTexture> makeTexture(id<MTLDevice> device, std::uint32_t width, std::uint32_t height,
+                                  MTLPixelFormat format) {
+    MTLTextureDescriptor *descriptor =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format
+                                                           width:width
+                                                          height:height
+                                                       mipmapped:NO];
+    return [device newTextureWithDescriptor:descriptor];
+}
+
 inline id<MTLTexture> uploadTexture(id<MTLDevice> device, id<MTLTexture> cached,
                                     std::uint32_t width, std::uint32_t height,
                                     std::uint32_t channels, std::span<const float> texels,
@@ -45,29 +86,11 @@ inline id<MTLTexture> uploadTexture(id<MTLDevice> device, id<MTLTexture> cached,
         texels.size() < static_cast<std::size_t>(width) * height * channels) {
         return nil;
     }
-    MTLPixelFormat nativeFormat = MTLPixelFormatRGBA32Float;
     std::size_t pixelBytes = 16;
-    if (format == hal::PixelFormat::r8Unorm) {
-        nativeFormat = MTLPixelFormatR8Unorm;
-        pixelBytes = 1;
-    } else if (format == hal::PixelFormat::r16Float) {
-        nativeFormat = MTLPixelFormatR16Float;
-        pixelBytes = 2;
-    } else if (format == hal::PixelFormat::rgba16Float) {
-        nativeFormat = MTLPixelFormatRGBA16Float;
-        pixelBytes = 8;
-    } else if (format == hal::PixelFormat::rg32Float) {
-        nativeFormat = MTLPixelFormatRG32Float;
-        pixelBytes = 8;
-    }
+    const MTLPixelFormat nativeFormat = backends::nativeFormat(format, pixelBytes);
     if (cached == nil || cached.width != width || cached.height != height ||
         cached.pixelFormat != nativeFormat) {
-        MTLTextureDescriptor *descriptor =
-            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:nativeFormat
-                                                               width:width
-                                                              height:height
-                                                           mipmapped:NO];
-        cached = [device newTextureWithDescriptor:descriptor];
+        cached = makeTexture(device, width, height, nativeFormat);
     }
     const std::size_t count = static_cast<std::size_t>(width) * height;
     const void *bytes = texels.data();

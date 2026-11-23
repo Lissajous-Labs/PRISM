@@ -57,5 +57,7 @@ int main() {
     const std::size_t atlasBytes = scene.engine->textures()[2].texels.size_bytes();
     std::cout << "Atlas bytes " << atlasBytes << ", first upload " << warm << ", insertion upload "
               << steady << ", max pixel error " << worst << '\n';
-    return !actual.empty() && steady * 16 < atlasBytes && worst < 0.01 ? 0 : 1;
+    return !actual.empty() && warm * 16 < atlasBytes && steady * 16 < atlasBytes && worst < 0.01
+               ? 0
+               : 1;
 }

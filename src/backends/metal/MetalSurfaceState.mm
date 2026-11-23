@@ -279,6 +279,7 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
                      : nil;
     tileBytes.clear();
     tileCopies.clear();
+    growths.clear();
     for (std::size_t slot = 0; slot < textureSlots; ++slot) {
         if (slot < view.textures.size()) {
             const auto &texture = view.textures[slot];
@@ -299,11 +300,27 @@ void MetalSurfaceState::uploadFrame(const render::FrameView &view) {
             if (sameStorage && previous.generation == texture.generation) {
                 continue;
             }
-            if (sameStorage && texture.tileSize != 0 && !texture.tiles.empty()) {
+            const bool tiled = texture.tileSize != 0 && !texture.tiles.empty() &&
+                               texture.generation != 0 && texture.width != 0 && texture.height != 0;
+            if (tiled) {
+                std::uint64_t since = previous.generation;
+                if (!sameStorage) {
+                    const bool grows = textures[slot] != nil && previous.width == texture.width &&
+                                       previous.height < texture.height &&
+                                       previous.channels == texture.channels &&
+                                       previous.format == texture.format;
+                    std::size_t pixelBytes = 0;
+                    const MTLPixelFormat format = nativeFormat(texture.format, pixelBytes);
+                    growths.push_back({slot, grows ? textures[slot] : nil,
+                                       grows ? previous.height : 0u, texture.width, texture.height,
+                                       pixelBytes});
+                    textures[slot] = makeTexture(gpu, texture.width, texture.height, format);
+                    since = grows ? previous.generation : 0;
+                }
                 const std::uint32_t columns =
                     (texture.width + texture.tileSize - 1) / texture.tileSize;
                 for (std::size_t tile = 0; tile < texture.tiles.size(); ++tile) {
-                    if (texture.tiles[tile] <= previous.generation) {
+                    if (texture.tiles[tile] <= since) {
                         continue;
                     }
                     const auto x = static_cast<std::uint32_t>(tile % columns) * texture.tileSize;
@@ -443,8 +460,40 @@ id<CAMetalDrawable> MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands
                            0,
                            0,
                            {0, 0}};
-    if (!tileCopies.empty()) {
+    if (!growths.empty() || !tileCopies.empty()) {
         id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
+        for (const TextureGrowth &growth : growths) {
+            const std::size_t rowBytes = growth.width * growth.pixelBytes;
+            const std::size_t zeroBytes = rowBytes * zeroBandRows;
+            if (zeroRows == nil || zeroRows.length < zeroBytes) {
+                zeroRows = [device->device newBufferWithLength:zeroBytes
+                                                       options:MTLResourceStorageModePrivate];
+                [blit fillBuffer:zeroRows range:NSMakeRange(0, zeroRows.length) value:0];
+            }
+            if (growth.source != nil) {
+                [blit copyFromTexture:growth.source
+                          sourceSlice:0
+                          sourceLevel:0
+                         sourceOrigin:MTLOriginMake(0, 0, 0)
+                           sourceSize:MTLSizeMake(growth.width, growth.copiedRows, 1)
+                            toTexture:textures[growth.slot]
+                     destinationSlice:0
+                     destinationLevel:0
+                    destinationOrigin:MTLOriginMake(0, 0, 0)];
+            }
+            for (std::uint32_t y = growth.copiedRows; y < growth.height; y += zeroBandRows) {
+                const std::uint32_t rows = std::min(zeroBandRows, growth.height - y);
+                [blit copyFromBuffer:zeroRows
+                           sourceOffset:0
+                      sourceBytesPerRow:rowBytes
+                    sourceBytesPerImage:rowBytes * rows
+                             sourceSize:MTLSizeMake(growth.width, rows, 1)
+                              toTexture:textures[growth.slot]
+                       destinationSlice:0
+                       destinationLevel:0
+                      destinationOrigin:MTLOriginMake(0, y, 0)];
+            }
+        }
         for (const TileCopy &copy : tileCopies) {
             [blit copyFromBuffer:tileStaging
                        sourceOffset:copy.offset
@@ -457,6 +506,7 @@ id<CAMetalDrawable> MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands
                   destinationOrigin:MTLOriginMake(copy.x, copy.y, 0)];
         }
         [blit endEncoding];
+        growths.clear();
         tileCopies.clear();
     }
     for (auto *spectrogram : device->spectrograms) {

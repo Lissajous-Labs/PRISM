@@ -6,6 +6,7 @@
 #include <array>
 #include <complex>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -54,6 +55,7 @@ class SpectrumEstimator {
     [[nodiscard]] std::span<const double> peaks() const noexcept { return peaks_; }
     [[nodiscard]] std::span<const double> slopes() const noexcept { return slopes_; }
     [[nodiscard]] double binWidth(std::size_t band) const noexcept;
+    [[nodiscard]] std::optional<double> reassignedPeak(double hz) noexcept;
     [[nodiscard]] const SpectrumSettings &settings() const noexcept { return settings_; }
 
   private:
@@ -65,8 +67,10 @@ class SpectrumEstimator {
         std::size_t written = 0;
         std::vector<double> input;
         std::vector<std::complex<double>> spectrum;
+        std::vector<std::complex<double>> previous;
         std::vector<double> density;
         Fft fft;
+        double evicted = 0;
     };
 
     void feed(std::size_t band, double value) noexcept;

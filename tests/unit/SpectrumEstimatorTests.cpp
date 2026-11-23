@@ -126,10 +126,32 @@ bool checkPeakHold() {
     return std::abs(at60 - 9.6) < 1e-6 && std::abs(at60 - at120) < 1e-6 &&
            std::abs(at60 - at240) < 1e-6;
 }
+
+bool checkReassignment() {
+    double worst = 0;
+    for (const double hz : {41.3, 333.7, 1000.37, 7300.2}) {
+        telemetry::SpectrumEstimator estimator({});
+        std::vector<float> tone(48000);
+        for (std::size_t n = 0; n < tone.size(); ++n) {
+            tone[n] = static_cast<float>(0.5 * std::sin(2 * 3.141592653589793 * hz * n / 48000.0));
+        }
+        estimator.push(tone);
+        const auto estimate = estimator.reassignedPeak(hz);
+        if (!estimate) {
+            return false;
+        }
+        const double bin = estimator.binWidth(hz < 125 ? 0 : hz < 500 ? 1 : hz < 2000 ? 2 : 3);
+        std::cout << "Reassigned " << hz << " Hz -> " << *estimate << " Hz (bin " << bin
+                  << " Hz)\n";
+        worst = std::max(worst, std::abs(*estimate - hz) / bin);
+    }
+    std::cout << "Reassignment worst error " << worst << " bins\n";
+    return worst < 1e-3;
+}
 }
 
 int main() {
-    const bool ok =
-        checkResolution() && checkPchipShape() && checkPeakHold() && checkWhiteNoiseBias();
+    const bool ok = checkResolution() && checkPchipShape() && checkPeakHold() &&
+                    checkReassignment() && checkWhiteNoiseBias();
     return ok ? 0 : 1;
 }

@@ -23,6 +23,7 @@ SpectrumEstimator::SpectrumEstimator(const SpectrumSettings &settings)
                   0,
                   std::vector<double>(spec.size),
                   std::vector<std::complex<double>>(spec.size / 2 + 1),
+                  std::vector<std::complex<double>>(spec.size / 2 + 1),
                   std::vector<double>(spec.size / 2 + 1, 0.0),
                   Fft(spec.size)};
         for (std::uint32_t n = 0; n < spec.size; ++n) {
@@ -54,9 +55,49 @@ double SpectrumEstimator::binWidth(std::size_t band) const noexcept {
     return bands_[band].rate / spectrumBands[band].size;
 }
 
+std::optional<double> SpectrumEstimator::reassignedPeak(double hz) noexcept {
+    std::size_t chosen = 0;
+    for (std::size_t b = 1; b < bands_.size(); ++b) {
+        chosen = crossoverWeight(b, hz) > crossoverWeight(chosen, hz) ? b : chosen;
+    }
+    Band &band = bands_[chosen];
+    const std::size_t size = band.history.size();
+    if (band.written <= size) {
+        return std::nullopt;
+    }
+
+    const std::size_t start = band.written % size;
+    for (std::size_t n = 0; n < size; ++n) {
+        const double sample = n == 0 ? band.evicted : band.history[(start + n - 1) % size];
+        band.input[n] = sample * band.window[n];
+    }
+    band.fft.forward(band.input, band.previous);
+    transform(band);
+
+    const double width = band.rate / static_cast<double>(size);
+    const auto centre = static_cast<std::ptrdiff_t>(std::lround(hz / width));
+    const auto last = static_cast<std::ptrdiff_t>(band.spectrum.size()) - 2;
+    std::ptrdiff_t peak = std::clamp<std::ptrdiff_t>(centre, 1, last);
+    for (std::ptrdiff_t k = std::max<std::ptrdiff_t>(1, centre - 3);
+         k <= std::min(last, centre + 3); ++k) {
+        if (std::norm(band.spectrum[static_cast<std::size_t>(k)]) >
+            std::norm(band.spectrum[static_cast<std::size_t>(peak)])) {
+            peak = k;
+        }
+    }
+
+    const auto k = static_cast<std::size_t>(peak);
+    const double omega = 2 * std::numbers::pi * static_cast<double>(k) / static_cast<double>(size);
+    const double advance = std::arg(band.spectrum[k]) - std::arg(band.previous[k]) - omega;
+    const double wrapped = std::remainder(advance, 2 * std::numbers::pi);
+    return (omega + wrapped) * band.rate / (2 * std::numbers::pi);
+}
+
 void SpectrumEstimator::feed(std::size_t band, double value) noexcept {
     Band &b = bands_[band];
-    b.history[b.written % b.history.size()] = value;
+    double &slot = b.history[b.written % b.history.size()];
+    b.evicted = slot;
+    slot = value;
     ++b.written;
 }
 

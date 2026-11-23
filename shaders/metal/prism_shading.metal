@@ -334,6 +334,107 @@ ShadeOut shadeTexture(PrimitiveDesc d, device const float *payload, TransformRec
 float4 shadeHalftoneGpu(PrimitiveDesc d, device const float *payload, device const float4 *cells,
                         TransformRecord t, float2 p);
 
+uint slugEligibility(float a, float b, float c) {
+    uint shift = (a > 0.0f ? 2u : 0u) + (b > 0.0f ? 4u : 0u) + (c > 0.0f ? 8u : 0u);
+    return (0x2E74u >> shift) & 3u;
+}
+
+float2 slugRoots(float a, float b, float c) {
+    if (abs(a) <= 1e-7f * (abs(b) + abs(c))) {
+        float t = abs(b) > 0.0f ? c * 0.5f / b : 0.0f;
+        return float2(t);
+    }
+    float d = sqrt(max(b * b - a * c, 0.0f));
+    if (b >= 0.0f) {
+        float q = b + d;
+        return float2(q != 0.0f ? c / q : q / a, q / a);
+    }
+    float q = b - d;
+    return float2(q / a, q != 0.0f ? c / q : q / a);
+}
+
+uint slugBand(float value, float low, float high, uint count) {
+    float t = (value - low) / (high - low);
+    return uint(clamp(int(floor(t * float(count))), 0, int(count) - 1));
+}
+
+float shadeSlugGpu(PrimitiveDesc d, device const float *payload, TransformRecord t, float2 local) {
+    uint at = d.payloadOffset;
+    float2 em0 = float2(payload[at], payload[at + 1]);
+    float2 em1 = float2(payload[at + 2], payload[at + 3]);
+    float2 localPerEm = float2(d.bounds[2] - d.bounds[0], d.bounds[3] - d.bounds[1]) / (em1 - em0);
+    float2 em = em0 + (local - float2(d.bounds[0], d.bounds[1])) / localPerEm;
+    float2 pixelsPerEm = float2(length(float2(t.forward[0], t.forward[1])),
+                                length(float2(t.forward[2], t.forward[3]))) *
+                         localPerEm;
+    device const float *blob = payload + at + 4;
+    uint hBands = uint(blob[5]);
+    uint vBands = uint(blob[6]);
+    uint curveBase = uint(blob[7]);
+
+    float horizontal = 0.0f;
+    float horizontalWeight = 0.0f;
+    uint hEntry = 8u + 2u * slugBand(em.y, blob[1], blob[3], hBands);
+    uint hStart = uint(blob[hEntry]);
+    uint hCount = uint(blob[hEntry + 1]);
+    for (uint k = 0; k < hCount; ++k) {
+        device const float *c = blob + curveBase + uint(blob[hStart + k]) * 6u;
+        float2 p1 = float2(c[0], c[1]) - em;
+        float2 p2 = float2(c[2], c[3]) - em;
+        float2 p3 = float2(c[4], c[5]) - em;
+        uint code = slugEligibility(p1.y, p2.y, p3.y);
+        if (code == 0u) {
+            continue;
+        }
+        float2 a = p1 - p2 * 2.0f + p3;
+        float2 b = p1 - p2;
+        float2 roots = slugRoots(a.y, b.y, p1.y);
+        float r1 = (a.x * roots.x - b.x * 2.0f) * roots.x + p1.x;
+        float r2 = (a.x * roots.y - b.x * 2.0f) * roots.y + p1.x;
+        if ((code & 1u) != 0u) {
+            horizontal += saturate(r1 * pixelsPerEm.x + 0.5f);
+            horizontalWeight = max(horizontalWeight, saturate(1.0f - abs(r1 * pixelsPerEm.x) * 2.0f));
+        }
+        if (code > 1u) {
+            horizontal -= saturate(r2 * pixelsPerEm.x + 0.5f);
+            horizontalWeight = max(horizontalWeight, saturate(1.0f - abs(r2 * pixelsPerEm.x) * 2.0f));
+        }
+    }
+
+    float vertical = 0.0f;
+    float verticalWeight = 0.0f;
+    uint vEntry = 8u + 2u * (hBands + slugBand(em.x, blob[0], blob[2], vBands));
+    uint vStart = uint(blob[vEntry]);
+    uint vCount = uint(blob[vEntry + 1]);
+    for (uint k = 0; k < vCount; ++k) {
+        device const float *c = blob + curveBase + uint(blob[vStart + k]) * 6u;
+        float2 p1 = float2(c[0], c[1]) - em;
+        float2 p2 = float2(c[2], c[3]) - em;
+        float2 p3 = float2(c[4], c[5]) - em;
+        uint code = slugEligibility(p1.x, p2.x, p3.x);
+        if (code == 0u) {
+            continue;
+        }
+        float2 a = p1 - p2 * 2.0f + p3;
+        float2 b = p1 - p2;
+        float2 roots = slugRoots(a.x, b.x, p1.x);
+        float r1 = (a.y * roots.x - b.y * 2.0f) * roots.x + p1.y;
+        float r2 = (a.y * roots.y - b.y * 2.0f) * roots.y + p1.y;
+        if ((code & 1u) != 0u) {
+            vertical -= saturate(r1 * pixelsPerEm.y + 0.5f);
+            verticalWeight = max(verticalWeight, saturate(1.0f - abs(r1 * pixelsPerEm.y) * 2.0f));
+        }
+        if (code > 1u) {
+            vertical += saturate(r2 * pixelsPerEm.y + 0.5f);
+            verticalWeight = max(verticalWeight, saturate(1.0f - abs(r2 * pixelsPerEm.y) * 2.0f));
+        }
+    }
+
+    float weighted = abs(horizontal * horizontalWeight + vertical * verticalWeight) /
+                     max(horizontalWeight + verticalWeight, 1.0f / 65536.0f);
+    return saturate(max(weighted, min(abs(horizontal), abs(vertical))));
+}
+
 ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gradients,
                         texture2d<float> texture, float2 physical, float4 fill, float4 border,
                         float4 shape, float reach) {
@@ -353,6 +454,8 @@ ShadeOut shadePrimitive(FrameBuffers frame, PrimitiveDesc d, texture2d<float> gr
         result.color = shadeHalftoneGpu(d, frame.payload, frame.halftoneCells, t, local);
     } else if (fullShading && kind == kindFormant) {
         result.color = shadeFormantGpu(d, frame.payload, t, local, texture, physical);
+    } else if (fullShading && kind == kindSlug) {
+        result.color = fill * shadeSlugGpu(d, frame.payload, t, local);
     } else if (analyticShading && kind == kindShadow) {
         LocalBox box = rectBox(d);
         float blurred =

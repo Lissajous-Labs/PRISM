@@ -7,6 +7,7 @@
 #include "render/GradientParameter.h"
 #include "render/HalftoneField.h"
 #include "render/ShadingSupport.h"
+#include "render/SlugCoverage.h"
 #include "render/TextureSampling.h"
 #include "render/Wavetable3d.h"
 
@@ -328,6 +329,25 @@ ShadeResult shadePrimitive(const FrameView &frame, const PrimitiveDesc &desc, do
     case PrimitiveKind::formantCurve:
         result = solid(shadeFormantCurve(frame, desc, local));
         break;
+    case PrimitiveKind::glyphSlug: {
+        const std::uint32_t at = desc.payloadOffset;
+        const double emX0 = frame.payload[at];
+        const double emY0 = frame.payload[at + 1];
+        const double emX1 = frame.payload[at + 2];
+        const double emY1 = frame.payload[at + 3];
+        const double localPerEmX = (desc.bounds[2] - desc.bounds[0]) / (emX1 - emX0);
+        const double localPerEmY = (desc.bounds[3] - desc.bounds[1]) / (emY1 - emY0);
+        const Vector2 em{emX0 + (local.x - desc.bounds[0]) / localPerEmX,
+                         emY0 + (local.y - desc.bounds[1]) / localPerEmY};
+        const double pixelsPerEmX =
+            std::hypot(transform.forward[0], transform.forward[1]) * localPerEmX;
+        const double pixelsPerEmY =
+            std::hypot(transform.forward[2], transform.forward[3]) * localPerEmY;
+        const auto blob = frame.payload.subspan(at + 4);
+        result = solid(detail::scale(detail::decodeColor(desc.color),
+                                     slugCoverage(blob, em, pixelsPerEmX, pixelsPerEmY)));
+        break;
+    }
     }
     if (desc.clipId != noClip) {
         const double clip = clipCoverage(frame, desc.clipId, x, y);

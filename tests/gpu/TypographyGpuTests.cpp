@@ -42,5 +42,29 @@ int main() {
         std::cerr << "GPU typography contract failed\n";
         return 1;
     }
-    return 0;
+
+    render::DrawList large;
+    const hal::Extent largeExtent{320, 140};
+    backends::CpuRefSurface largeReference({largeExtent});
+    auto largeGpu = device.createRenderSurface({largeExtent});
+    scene.engine->beginFrame();
+    scene.engine->draw(large, scene.shaper->shape({"AV fi", 96}), {8, 10}, {test::white}, 96, 1);
+    large.setTransform(
+        *large.addTransform(math::Affine2D::translation(200, 20) * math::Affine2D::rotation(0.35)));
+    scene.engine->draw(large, scene.shaper->shape({"V", 64}), {0, 0}, {test::white, false, true},
+                       64, 1);
+    const auto largeView = test::viewOf(large, scene.engine->textures());
+    const auto slugExpected = test::renderFull(largeReference, largeView, {0, 0, 0, 1});
+    const auto slugActual = test::renderFull(*largeGpu, largeView, {0, 0, 0, 1});
+    double slugWorst = 0;
+    for (std::size_t i = 0; i < slugExpected.size(); ++i) {
+        slugWorst =
+            std::max(slugWorst, static_cast<double>(std::abs(slugExpected[i] - slugActual[i])));
+    }
+    const bool slugPrimitives = std::ranges::all_of(large.primitives(), [](const auto &d) {
+        return d.kind() == render::PrimitiveKind::glyphSlug;
+    });
+    std::cout << "Slug parity: max channel error " << slugWorst << " over "
+              << large.primitives().size() << " glyphs\n";
+    return !slugExpected.empty() && slugPrimitives && slugWorst < 0.01 ? 0 : 1;
 }

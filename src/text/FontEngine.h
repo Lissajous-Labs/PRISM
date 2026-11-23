@@ -5,6 +5,7 @@
 #include "text/GlyphAtlas.h"
 #include "text/GlyphBitmap.h"
 #include "text/MtsdfGenerator.h"
+#include "text/SlugGlyph.h"
 #include "text/TextShaper.h"
 
 #include <array>
@@ -15,7 +16,7 @@
 #include <vector>
 
 namespace prism::text {
-enum class TextTier : std::uint8_t { alpha, lcd, mtsdf };
+enum class TextTier : std::uint8_t { alpha, lcd, mtsdf, slug };
 
 struct TextStyle {
     std::uint32_t color;
@@ -24,7 +25,8 @@ struct TextStyle {
     float background = -1;
 };
 
-inline constexpr float tierOneMaximumPixels = 24;
+inline constexpr float tierOneMaximumPixels = 14;
+inline constexpr float tierTwoMaximumPixels = 48;
 
 class FontEngine {
   public:
@@ -38,6 +40,7 @@ class FontEngine {
     [[nodiscard]] static TextTier tierFor(float physicalSize, const TextStyle &style) noexcept;
     [[nodiscard]] std::span<const render::TextureView> textures() const noexcept { return views_; }
     [[nodiscard]] std::size_t rasterizations() const noexcept { return rasterizations_; }
+    [[nodiscard]] std::size_t outlines() const noexcept { return slugs_.size(); }
     [[nodiscard]] const GlyphAtlas &atlas(TextTier tier) const noexcept {
         return atlases_[static_cast<std::size_t>(tier)];
     }
@@ -60,9 +63,11 @@ class FontEngine {
     };
     std::unordered_map<std::uint64_t, Placement> placements_;
     std::unordered_set<std::uint64_t> emptyGlyphs_;
+    std::unordered_map<std::uint64_t, SlugGlyph> slugs_;
 
     [[nodiscard]] std::optional<Placement> glyphFor(TextTier tier, const PositionedGlyph &glyph,
                                                     float pixelSize, std::uint32_t phase);
     void refreshViews();
+    [[nodiscard]] const SlugGlyph *slugFor(const PositionedGlyph &glyph);
 };
 }

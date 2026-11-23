@@ -15,10 +15,26 @@ FontEngine::FontEngine(std::vector<const FontFile *> fonts, std::uint32_t textur
                GlyphAtlas(pageSize, 4, atlasPages)} {}
 
 TextTier FontEngine::tierFor(float physicalSize, const TextStyle &style) noexcept {
+    if (physicalSize > tierTwoMaximumPixels) {
+        return TextTier::slug;
+    }
     if (style.transformed || physicalSize > tierOneMaximumPixels) {
         return TextTier::mtsdf;
     }
     return style.subpixel ? TextTier::lcd : TextTier::alpha;
+}
+
+const SlugGlyph *FontEngine::slugFor(const PositionedGlyph &glyph) {
+    const std::uint64_t key = (static_cast<std::uint64_t>(glyph.font) << 32) | glyph.glyph;
+    if (const auto found = slugs_.find(key); found != slugs_.end()) {
+        return found->second.blob.empty() ? nullptr : &found->second;
+    }
+
+    const FontFile &font = *fonts_[glyph.font];
+    render::VectorPath outline;
+    font.outline(glyph.glyph, 1.0 / font.metrics().unitsPerEm, outline);
+    const auto inserted = slugs_.emplace(key, buildSlugGlyph(outline, 1e-4));
+    return inserted.first->second.blob.empty() ? nullptr : &inserted.first->second;
 }
 
 std::optional<FontEngine::Placement> FontEngine::glyphFor(TextTier tier,
@@ -51,6 +67,8 @@ std::optional<FontEngine::Placement> FontEngine::glyphFor(TextTier tier,
     case TextTier::mtsdf:
         generateMtsdf(font, glyph.glyph, mtsdf_, scratch_);
         break;
+    case TextTier::slug:
+        return std::nullopt;
     }
     ++rasterizations_;
     if (scratch_.width == 0) {
@@ -97,6 +115,23 @@ void FontEngine::draw(render::DrawList &list, const TextLayout &layout, math::Ve
         style.background, math::foregroundLuminance(
                               static_cast<float>(foreground.r), static_cast<float>(foreground.g),
                               static_cast<float>(foreground.b), static_cast<float>(foreground.a)));
+    if (tier == TextTier::slug) {
+        for (const PositionedGlyph &glyph : layout.glyphs) {
+            const SlugGlyph *slug = slugFor(glyph);
+            if (slug == nullptr) {
+                continue;
+            }
+            const double physicalX = (origin.x + glyph.x) * physicalScale;
+            const double physicalY = (origin.y + glyph.y) * physicalScale;
+            const auto edge = [&](double pen, float em) {
+                return static_cast<float>((pen + em * physicalSize) / physicalScale);
+            };
+            list.slugGlyph({edge(physicalX, slug->x0), edge(physicalY, slug->y0),
+                            edge(physicalX, slug->x1), edge(physicalY, slug->y1)},
+                           {slug->x0, slug->y0, slug->x1, slug->y1}, slug->blob, style.color);
+        }
+        return;
+    }
     for (const PositionedGlyph &glyph : layout.glyphs) {
         const double physicalX = (origin.x + glyph.x) * physicalScale;
         const double physicalY = (origin.y + glyph.y) * physicalScale;

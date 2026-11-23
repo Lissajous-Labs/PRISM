@@ -273,6 +273,12 @@ void DrawList::glyphQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint32_t
     desc.params[3] = 1;
 }
 
+void DrawList::slugGlyph(RectF rect, RectF em, std::span<const float> blob, std::uint32_t color) {
+    PrimitiveDesc &desc = emit(PrimitiveKind::glyphSlug, rect, color);
+    desc.payloadOffset = appendPayload({em.x0, em.y0, em.x1, em.y1});
+    payload_.insert(payload_.end(), blob.begin(), blob.end());
+}
+
 void DrawList::plotStrip(RectF rect, std::uint32_t strip, std::uint32_t columns, float thickness,
                          std::uint32_t color, float scrollColumns, float edgeFade, bool fillBelow) {
     PrimitiveDesc &desc = emit(PrimitiveKind::plotStrip, rect, color);

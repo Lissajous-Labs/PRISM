@@ -63,6 +63,7 @@ class DrawList {
                       std::uint32_t color, float pixelRange = 0);
     void glyphQuad(PrimitiveKind kind, RectF rect, RectF uv, std::uint32_t texture,
                    std::uint32_t color, float pixelRange, float ppem, float background);
+    void slugGlyph(RectF rect, RectF em, std::span<const float> blob, std::uint32_t color);
     void fillPath(const VectorPath &path, std::uint32_t color, FillRule rule = FillRule::nonZero);
     void strokePath(const VectorPath &path, const StrokeStyle &style, std::uint32_t color);
     void backdropBlur(RectF rect, math::CornerRadii radii, float sigma);

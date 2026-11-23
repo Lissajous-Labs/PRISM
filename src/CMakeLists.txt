@@ -95,6 +95,7 @@ add_library(prism_text STATIC
     text/GlyphRasterizer.cpp
     text/LineBreak.cpp
     text/MtsdfGenerator.cpp
+    text/SlugGlyph.cpp
     text/OpenTypeLayout.cpp
     text/TextShaper.cpp
     text/UnicodeClasses.cpp

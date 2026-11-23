@@ -471,13 +471,7 @@ id<CAMetalDrawable> MetalSurfaceState::encodeFrame(id<MTLCommandBuffer> commands
         }
     }
     for (auto *telemetry : device->telemetries) {
-        const auto strip = telemetry->scope().nativeTexture;
-        const bool sampled = std::ranges::any_of(request.view.textures, [&](const auto &texture) {
-            return texture.nativeTexture != nullptr && texture.nativeTexture == strip;
-        });
-        if (sampled) {
-            static_cast<void>(telemetry->encode((__bridge void *)commands));
-        }
+        static_cast<void>(telemetry->encode((__bridge void *)commands));
     }
     formants.encode(*device, commands, primitives, payload, transforms);
     halftones.encode(*device, commands, primitives, payload, gradients, textures);

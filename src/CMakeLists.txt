@@ -30,6 +30,7 @@ set(PRISM_METAL_SHADERS
     "${PROJECT_SOURCE_DIR}/shaders/metal/post_effects.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/probes.metal"
     "${PROJECT_SOURCE_DIR}/shaders/metal/telemetry_scope.metal"
+    "${PROJECT_SOURCE_DIR}/shaders/metal/telemetry_spectrum.metal"
 )
 string(REPLACE ";" "|" PRISM_SHADER_ARGUMENT "${PRISM_METAL_SHADERS}")
 set(PRISM_SHADER_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/ShaderSources.cpp")
@@ -67,6 +68,14 @@ add_library(prism_backend_cpu STATIC
 )
 target_link_libraries(prism_backend_cpu PUBLIC prism_render)
 
+add_library(prism_telemetry STATIC
+    telemetry/LoudnessMeter.cpp
+    telemetry/HalfBand.cpp
+    telemetry/SpectrumEstimator.cpp
+    telemetry/UmaTelemetry.cpp
+)
+target_link_libraries(prism_telemetry PUBLIC prism_render)
+
 if(APPLE)
     add_library(prism_backend_metal STATIC
         backends/metal/MetalDevice.mm
@@ -81,7 +90,7 @@ if(APPLE)
         backends/metal/MetalSurface.mm
         backends/metal/MetalSurfaceState.mm
     )
-    target_link_libraries(prism_backend_metal PUBLIC prism_render "-framework Metal" "-framework Foundation" "-framework QuartzCore")
+    target_link_libraries(prism_backend_metal PUBLIC prism_render prism_telemetry "-framework Metal" "-framework Foundation" "-framework QuartzCore")
     target_compile_options(prism_backend_metal PRIVATE -fobjc-arc)
 endif()
 
@@ -148,10 +157,6 @@ else()
 endif()
 
 add_library(prism_widgets STATIC
-    telemetry/LoudnessMeter.cpp
-    telemetry/HalfBand.cpp
-    telemetry/SpectrumEstimator.cpp
-    telemetry/UmaTelemetry.cpp
     widgets/GpuFilterCurve.cpp
     widgets/GpuNoiseEnvelope.cpp
     widgets/VowelFormants.cpp
@@ -162,7 +167,7 @@ add_library(prism_widgets STATIC
     widgets/GpuScope.cpp
     widgets/GpuSpectrum.cpp
 )
-target_link_libraries(prism_widgets PUBLIC prism_render)
+target_link_libraries(prism_widgets PUBLIC prism_render prism_telemetry)
 
 add_library(prism_controls STATIC
     widgets/Button.cpp

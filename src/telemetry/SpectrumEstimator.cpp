@@ -41,9 +41,7 @@ SpectrumEstimator::SpectrumEstimator(const SpectrumSettings &settings)
         frequencies_.push_back(settings_.lowHz * std::exp(ratio * i));
         positions_.push_back(static_cast<double>(i) / (count - 1));
     }
-    for (std::uint32_t i = 0; i <= count; ++i) {
-        edges_.push_back(settings_.lowHz * std::exp(ratio * (static_cast<double>(i) - 0.5)));
-    }
+    edges_ = spectrumEdges(settings_);
     power_.assign(count, 0.0);
     instant_.assign(count, settings_.floorDb);
     levels_.assign(count, settings_.floorDb);
@@ -109,7 +107,7 @@ double SpectrumEstimator::average(const Band &band, double low, double high) con
     return sum / (high - low);
 }
 
-double SpectrumEstimator::weight(std::size_t band, double hz) const noexcept {
+double crossoverWeight(std::size_t band, double hz) noexcept {
     const auto rise = [](double hz, double edge) {
         const double u = (std::log2(hz / edge) + crossoverOctaves) / (2 * crossoverOctaves);
         if (u <= 0) {
@@ -126,6 +124,28 @@ double SpectrumEstimator::weight(std::size_t band, double hz) const noexcept {
     return fromBelow * intoAbove;
 }
 
+double blackmanHarrisPower(std::uint32_t size) noexcept {
+    double sum = 0;
+    for (std::uint32_t n = 0; n < size; ++n) {
+        const double phase = 2 * std::numbers::pi * n / size;
+        const double w = blackmanHarris[0] - blackmanHarris[1] * std::cos(phase) +
+                         blackmanHarris[2] * std::cos(2 * phase) -
+                         blackmanHarris[3] * std::cos(3 * phase);
+        sum += w * w;
+    }
+    return sum;
+}
+
+std::vector<double> spectrumEdges(const SpectrumSettings &settings) {
+    const std::uint32_t count = std::max<std::uint32_t>(settings.knots, 2);
+    const double ratio = std::log(settings.highHz / settings.lowHz) / (count - 1);
+    std::vector<double> edges;
+    for (std::uint32_t i = 0; i <= count; ++i) {
+        edges.push_back(settings.lowHz * std::exp(ratio * (static_cast<double>(i) - 0.5)));
+    }
+    return edges;
+}
+
 bool SpectrumEstimator::analyze(double dt) noexcept {
     for (const Band &band : bands_) {
         if (band.written < band.history.size()) {
@@ -139,18 +159,36 @@ bool SpectrumEstimator::analyze(double dt) noexcept {
     for (std::size_t i = 0; i < frequencies_.size(); ++i) {
         double sum = 0;
         for (std::size_t b = 0; b < bands_.size(); ++b) {
-            const double w = weight(b, frequencies_[i]);
+            const double w = crossoverWeight(b, frequencies_[i]);
             if (w > 0) {
                 sum += w * average(bands_[b], edges_[i], edges_[i + 1]);
             }
         }
         power_[i] = sum;
-        instant_[i] = std::max(settings_.floorDb,
-                               10 * std::log10(sum * settings_.sampleRate / 2 + powerFloor) +
-                                   settings_.tiltDbPerOctave * std::log2(frequencies_[i] / 1000));
     }
+    levelsFromPower();
     smooth(dt);
     return true;
+}
+
+bool SpectrumEstimator::apply(std::span<const float> power, double dt) noexcept {
+    if (power.size() < power_.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < power_.size(); ++i) {
+        power_[i] = power[i];
+    }
+    levelsFromPower();
+    smooth(dt);
+    return true;
+}
+
+void SpectrumEstimator::levelsFromPower() noexcept {
+    for (std::size_t i = 0; i < power_.size(); ++i) {
+        instant_[i] = std::max(settings_.floorDb,
+                               10 * std::log10(power_[i] * settings_.sampleRate / 2 + powerFloor) +
+                                   settings_.tiltDbPerOctave * std::log2(frequencies_[i] / 1000));
+    }
 }
 
 void SpectrumEstimator::smooth(double dt) noexcept {

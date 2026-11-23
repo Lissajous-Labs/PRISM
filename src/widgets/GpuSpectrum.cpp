@@ -35,13 +35,25 @@ bool GpuSpectrum::analyze(std::span<const float> block, double dt) noexcept {
     if (!estimator_.analyze(dt)) {
         return false;
     }
+    copyLevels();
+    return true;
+}
+
+bool GpuSpectrum::apply(std::span<const float> power, double dt) noexcept {
+    if (!estimator_.apply(power, dt)) {
+        return false;
+    }
+    copyLevels();
+    return true;
+}
+
+void GpuSpectrum::copyLevels() noexcept {
     const auto levels = estimator_.levels();
     const auto peaks = estimator_.peaks();
     for (std::uint32_t i = 0; i < columns_; ++i) {
         levels_[i] = static_cast<float>(levels[i]);
         peaks_[i] = static_cast<float>(peaks[i]);
     }
-    return true;
 }
 
 void GpuSpectrum::buildStrip(float minDb, float maxDb) {

@@ -15,11 +15,14 @@ class GpuSpectrum {
 
     void push(std::span<const float> samples) noexcept { estimator_.push(samples); }
     bool analyze(std::span<const float> block, double dt) noexcept;
+    bool apply(std::span<const float> power, double dt) noexcept;
     void buildStrip(float minDb, float maxDb);
     void appendWaterfallRow(float minDb, float maxDb);
 
     [[nodiscard]] std::span<const float> levels() const noexcept { return levels_; }
     [[nodiscard]] std::span<const float> peaks() const noexcept { return peaks_; }
+    [[nodiscard]] std::span<const float> units() const noexcept { return units_; }
+    [[nodiscard]] std::span<const float> unitSlopes() const noexcept { return unitSlopes_; }
     [[nodiscard]] double columnFrequency(std::uint32_t column) const noexcept {
         return estimator_.frequencies()[column];
     }
@@ -40,6 +43,8 @@ class GpuSpectrum {
     static constexpr std::uint32_t waterfallRows = 128;
 
   private:
+    void copyLevels() noexcept;
+
     std::uint32_t columns_;
     telemetry::SpectrumEstimator estimator_;
     std::vector<float> levels_;

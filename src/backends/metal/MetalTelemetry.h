@@ -1,10 +1,12 @@
 #pragma once
 
 #include "render/FrameView.h"
+#include "telemetry/SpectrumEstimator.h"
 #include "telemetry/UmaTelemetry.h"
 
 #include <cstdint>
 #include <memory>
+#include <span>
 
 namespace prism::backends {
 struct MetalDeviceState;
@@ -28,6 +30,12 @@ class MetalTelemetry {
     [[nodiscard]] bool dispatch();
     [[nodiscard]] render::TextureView scope() const noexcept;
     [[nodiscard]] const telemetry::UmaSnapshot &lastSnapshot() const noexcept;
+
+    bool enableSpectrum(const telemetry::SpectrumSettings &settings);
+    [[nodiscard]] bool prepareSpectrum() noexcept;
+    [[nodiscard]] std::span<const float> spectrumPower() const noexcept;
+    [[nodiscard]] std::span<const float> spectrumDensity(std::size_t band) const noexcept;
+    [[nodiscard]] std::uint64_t spectrumGeneration() const noexcept;
 
   private:
     friend struct MetalSurfaceState;

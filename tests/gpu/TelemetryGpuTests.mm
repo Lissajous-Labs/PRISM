@@ -1,4 +1,5 @@
 #include "backends/metal/MetalBackend.h"
+#include "telemetry/SpectrumEstimator.h"
 #include "telemetry/UmaTelemetry.h"
 
 #import <Metal/Metal.h>
@@ -85,6 +86,48 @@ int main() {
         }
 
         std::cout << "telemetry scope frames " << end << " worst error " << worst << "\n";
-        return end == written && worst < 1e-6f ? 0 : 1;
+        if (end != written || worst >= 1e-6f) {
+            return 1;
+        }
+
+        telemetry::SpectrumSettings settings;
+        settings.knots = 192;
+        if (!telemetry->enableSpectrum(settings)) {
+            std::cout << "spectrum pipelines unavailable\n";
+            return 1;
+        }
+        telemetry::SpectrumEstimator reference(settings);
+        std::vector<float> mono(64);
+        std::uint32_t state = 12345;
+        for (int block = 0; block < 800; ++block) {
+            for (std::size_t n = 0; n < left.size(); ++n) {
+                state = state * 1664525u + 1013904223u;
+                const double noise = (static_cast<double>(state >> 8) / (1 << 24) - 0.5) * 0.2;
+                const double t = static_cast<double>(written + n) / 48000;
+                left[n] = static_cast<float>(noise + 0.3 * std::sin(2 * std::numbers::pi * 61 * t));
+                right[n] =
+                    static_cast<float>(noise + 0.2 * std::sin(2 * std::numbers::pi * 7300 * t));
+                mono[n] = static_cast<float>(0.5 * (static_cast<double>(left[n]) + right[n]));
+            }
+            writer.write(left, right);
+            reference.push(mono);
+            written += left.size();
+        }
+        reference.push({});
+        if (!reference.analyze(1.0 / 60) || !telemetry->prepareSpectrum() ||
+            !telemetry->dispatch()) {
+            std::cout << "spectrum dispatch failed\n";
+            return 1;
+        }
+        const auto power = telemetry->spectrumPower();
+        double worstRatio = 0;
+        for (std::size_t k = 0; k < reference.power().size() && k < power.size(); ++k) {
+            const double ratio = std::abs(10 * std::log10(power[k] / reference.power()[k]));
+            worstRatio = std::max(worstRatio, ratio);
+        }
+        std::cout << "GPU spectrum knots " << power.size() << ", generation "
+                  << telemetry->spectrumGeneration() << ", worst knot deviation from CPU "
+                  << worstRatio << " dB\n";
+        return power.size() == reference.power().size() && worstRatio < 0.01 ? 0 : 1;
     }
 }

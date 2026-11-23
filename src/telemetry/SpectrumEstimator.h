@@ -34,12 +34,17 @@ struct SpectrumSettings {
     double floorDb = -140;
 };
 
+[[nodiscard]] double crossoverWeight(std::size_t band, double hz) noexcept;
+[[nodiscard]] double blackmanHarrisPower(std::uint32_t size) noexcept;
+[[nodiscard]] std::vector<double> spectrumEdges(const SpectrumSettings &settings);
+
 class SpectrumEstimator {
   public:
     explicit SpectrumEstimator(const SpectrumSettings &settings);
 
     void push(std::span<const float> samples) noexcept;
     bool analyze(double dt) noexcept;
+    bool apply(std::span<const float> power, double dt) noexcept;
     void smooth(double dt) noexcept;
 
     [[nodiscard]] std::span<const double> frequencies() const noexcept { return frequencies_; }
@@ -67,7 +72,7 @@ class SpectrumEstimator {
     void feed(std::size_t band, double value) noexcept;
     void transform(Band &band) noexcept;
     [[nodiscard]] double average(const Band &band, double low, double high) const noexcept;
-    [[nodiscard]] double weight(std::size_t band, double hz) const noexcept;
+    void levelsFromPower() noexcept;
 
     SpectrumSettings settings_;
     std::array<double, halfBandTaps> taps_;

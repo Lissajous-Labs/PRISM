@@ -97,5 +97,32 @@ int main() {
         std::cerr << "Visualizer contract failed\n";
         return 1;
     }
-    return 0;
+
+    render::DrawList glowList;
+    glowList.roundedRect({0, 0, 512, 256}, {}, render::packColor(8, 8, 10, 255));
+    spectrum.draw(glowList, {16, 40, 496, 240}, render::packColor(255, 230, 120, 255), 2.0f);
+    const auto glowView = test::viewOf(glowList);
+    render::BloomSettings bloom{
+        .threshold = 0.35f, .knee = 0.5f, .intensity = 0.6f, .levels = 4, .karis = true};
+    std::vector<float> cpuGlow(512 * 256 * 4);
+    std::vector<float> gpuGlow(cpuGlow.size());
+    std::vector<float> plain(cpuGlow.size());
+    if (!reference.render({glowView, &full, {0, 0, 0, 1}, &bloom}) ||
+        !reference.readback(cpuGlow) || !gpu->render({glowView, &full, {0, 0, 0, 1}, &bloom}) ||
+        !gpu->readback(gpuGlow) || !gpu->render({glowView, &full, {0, 0, 0, 1}}) ||
+        !gpu->readback(plain)) {
+        return 1;
+    }
+    std::vector<test::Pixel> glowA(gpuGlow.size() / 4);
+    std::vector<test::Pixel> glowB(glowA.size());
+    double halo = 0;
+    for (std::size_t i = 0; i < glowA.size(); ++i) {
+        glowA[i] = {gpuGlow[i * 4], gpuGlow[i * 4 + 1], gpuGlow[i * 4 + 2], gpuGlow[i * 4 + 3]};
+        glowB[i] = {cpuGlow[i * 4], cpuGlow[i * 4 + 1], cpuGlow[i * 4 + 2], cpuGlow[i * 4 + 3]};
+        halo = std::max(halo, static_cast<double>(gpuGlow[i * 4] - plain[i * 4]));
+    }
+    const double glowPsnr = test::comparePixels(glowA, glowB, 1.0).psnr;
+    std::cout << "Bloomed spectrum parity PSNR " << glowPsnr << " dB, peak halo gain " << halo
+              << '\n';
+    return glowPsnr >= 50 && halo > 0.01 ? 0 : 1;
 }

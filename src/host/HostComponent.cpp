@@ -67,7 +67,8 @@ void HostComponent::setOccluded(bool occluded) {
 }
 
 bool HostComponent::renderFrame(const render::FrameView &view, const hal::DamageRegion *damage,
-                                math::PremultipliedColor clear) {
+                                math::PremultipliedColor clear,
+                                const render::BloomSettings *bloom) {
     if (!lifecycle_.canRender() || !surface_) {
         return false;
     }
@@ -82,12 +83,13 @@ bool HostComponent::renderFrame(const render::FrameView &view, const hal::Damage
     const hal::Extent extent = surface_->extent();
     const hal::DamageRegion full(
         {0, 0, static_cast<std::int32_t>(extent.width), static_cast<std::int32_t>(extent.height)});
-    const hal::DamageRegion *region = fullRedraw_ || damage == nullptr ? &full : damage;
+    const hal::DamageRegion *region =
+        fullRedraw_ || damage == nullptr || bloom != nullptr ? &full : damage;
     if (region->empty()) {
         return true;
     }
     bool presented = false;
-    const render::FrameRequest request{view, region, clear};
+    const render::FrameRequest request{view, region, clear, bloom};
     const bool rendered = surfaceHost_.attached()
                               ? surfaceHost_.renderFrame(*surface_, request, presented)
                               : surface_->render(request);

@@ -20,7 +20,8 @@ class HostComponent {
     void setLiveResize(bool active) { surfaceHost_.setLiveResize(active); }
     void setOccluded(bool occluded);
     [[nodiscard]] bool renderFrame(const render::FrameView &view, const hal::DamageRegion *damage,
-                                   math::PremultipliedColor clear);
+                                   math::PremultipliedColor clear,
+                                   const render::BloomSettings *bloom = nullptr);
     void detach();
 
     [[nodiscard]] SurfaceState state() const noexcept { return lifecycle_.state(); }

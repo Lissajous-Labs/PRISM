@@ -148,10 +148,49 @@ bool checkReassignment() {
     std::cout << "Reassignment worst error " << worst << " bins\n";
     return worst < 1e-3;
 }
+
+bool checkConstantQ() {
+    telemetry::SpectrumSettings settings;
+    settings.constantQ = true;
+    telemetry::SpectrumEstimator estimator(settings);
+    const auto frequencies = estimator.constantQFrequencies();
+    const double step = frequencies[1] / frequencies[0];
+    double worstLevel = 0;
+    double worstNeighbour = 0;
+    double worstSecond = -300;
+    for (const std::size_t k : {std::size_t{40}, std::size_t{100}, std::size_t{135},
+                                std::size_t{170}, std::size_t{205}}) {
+        const double hz = frequencies[k];
+        telemetry::SpectrumEstimator tone(settings);
+        std::vector<float> samples(96000);
+        for (std::size_t n = 0; n < samples.size(); ++n) {
+            samples[n] =
+                static_cast<float>(0.5 * std::sin(2 * 3.141592653589793 * hz * n / 48000.0));
+        }
+        tone.push(samples);
+        std::vector<double> power(frequencies.size());
+        if (!tone.constantQ(power)) {
+            return false;
+        }
+        const auto db = [&](std::size_t i) { return 10 * std::log10(power[i] / 0.125); };
+        const double upper = 1 / std::exp2(1.0 / 24);
+        const double hann =
+            std::sin(3.141592653589793 * upper) / (3.141592653589793 * upper * (1 - upper * upper));
+        worstLevel = std::max(worstLevel, std::abs(db(k)));
+        worstNeighbour = std::max({worstNeighbour, std::abs(db(k - 1) - db(k) + 6.0206),
+                                   std::abs(db(k + 1) - db(k) - 20 * std::log10(hann))});
+        worstSecond = std::max({worstSecond, db(k - 2) - db(k), db(k + 2) - db(k)});
+    }
+    std::cout << "Constant-Q: " << frequencies.size() << " bins, ratio " << step
+              << ", centre error " << worstLevel << " dB, neighbour deviation from Hann "
+              << worstNeighbour << " dB, second neighbour " << worstSecond << " dB\n";
+    return std::abs(step - std::exp2(1.0 / 24)) < 1e-12 && worstLevel < 0.05 &&
+           worstNeighbour < 0.1 && worstSecond < -30;
+}
 }
 
 int main() {
     const bool ok = checkResolution() && checkPchipShape() && checkPeakHold() &&
-                    checkReassignment() && checkWhiteNoiseBias();
+                    checkReassignment() && checkConstantQ() && checkWhiteNoiseBias();
     return ok ? 0 : 1;
 }

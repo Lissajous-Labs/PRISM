@@ -33,6 +33,8 @@ struct SpectrumSettings {
     double holdSeconds = 1.2;
     double peakFallDbPerSecond = 12;
     double floorDb = -140;
+    bool constantQ = false;
+    std::uint32_t binsPerOctave = 24;
 };
 
 [[nodiscard]] double crossoverWeight(std::size_t band, double hz) noexcept;
@@ -56,9 +58,19 @@ class SpectrumEstimator {
     [[nodiscard]] std::span<const double> slopes() const noexcept { return slopes_; }
     [[nodiscard]] double binWidth(std::size_t band) const noexcept;
     [[nodiscard]] std::optional<double> reassignedPeak(double hz) noexcept;
+    [[nodiscard]] std::span<const double> constantQFrequencies() const noexcept {
+        return constantQFrequencies_;
+    }
+    bool constantQ(std::span<double> power) const noexcept;
     [[nodiscard]] const SpectrumSettings &settings() const noexcept { return settings_; }
 
   private:
+    struct ConstantQBin {
+        std::uint32_t band;
+        std::uint32_t length;
+        std::size_t kernel;
+    };
+
     struct Band {
         double rate;
         std::vector<double> window;
@@ -71,6 +83,7 @@ class SpectrumEstimator {
         std::vector<double> density;
         Fft fft;
         double evicted = 0;
+        std::vector<double> constantQHistory{};
     };
 
     void feed(std::size_t band, double value) noexcept;
@@ -92,5 +105,8 @@ class SpectrumEstimator {
     std::vector<double> holds_;
     std::vector<double> slopes_;
     bool primed_ = false;
+    std::vector<double> constantQFrequencies_;
+    std::vector<ConstantQBin> constantQBins_;
+    std::vector<std::complex<double>> constantQKernels_;
 };
 }

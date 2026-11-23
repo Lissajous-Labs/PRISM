@@ -49,6 +49,62 @@ SpectrumEstimator::SpectrumEstimator(const SpectrumSettings &settings)
     peaks_.assign(count, settings_.floorDb);
     holds_.assign(count, 0.0);
     slopes_.assign(count, 0.0);
+
+    if (!settings_.constantQ) {
+        return;
+    }
+    const double perOctave = std::max<std::uint32_t>(settings_.binsPerOctave, 1);
+    const double q = 1 / (std::exp2(1 / perOctave) - 1);
+    const auto bins = static_cast<std::size_t>(
+                          std::floor(perOctave * std::log2(settings_.highHz / settings_.lowHz))) +
+                      1;
+    for (std::size_t k = 0; k < bins; ++k) {
+        const double hz = settings_.lowHz * std::exp2(static_cast<double>(k) / perOctave);
+        std::uint32_t band = 0;
+        while (band + 1 < spectrumBands.size() && hz >= spectrumBands[band].high) {
+            ++band;
+        }
+        const double rate = bands_[band].rate;
+        const auto length = static_cast<std::uint32_t>(std::max(2L, std::lround(q * rate / hz)));
+        Band &target = bands_[band];
+        if (target.constantQHistory.size() < length) {
+            target.constantQHistory.assign(length, 0.0);
+        }
+        const std::size_t kernel = constantQKernels_.size();
+        double sum = 0;
+        for (std::uint32_t n = 0; n < length; ++n) {
+            sum += 0.5 - 0.5 * std::cos(2 * std::numbers::pi * n / length);
+        }
+        for (std::uint32_t n = 0; n < length; ++n) {
+            const double window = (0.5 - 0.5 * std::cos(2 * std::numbers::pi * n / length)) / sum;
+            constantQKernels_.push_back(std::polar(window, -2 * std::numbers::pi * hz * n / rate));
+        }
+        constantQFrequencies_.push_back(hz);
+        constantQBins_.push_back({band, length, kernel});
+    }
+}
+
+bool SpectrumEstimator::constantQ(std::span<double> power) const noexcept {
+    if (constantQBins_.empty() || power.size() < constantQBins_.size()) {
+        return false;
+    }
+    for (const ConstantQBin &bin : constantQBins_) {
+        if (bands_[bin.band].written < bin.length) {
+            return false;
+        }
+    }
+    for (std::size_t k = 0; k < constantQBins_.size(); ++k) {
+        const ConstantQBin &bin = constantQBins_[k];
+        const Band &band = bands_[bin.band];
+        const std::size_t size = band.constantQHistory.size();
+        const std::size_t first = band.written - bin.length;
+        std::complex<double> sum = 0;
+        for (std::uint32_t n = 0; n < bin.length; ++n) {
+            sum += band.constantQHistory[(first + n) % size] * constantQKernels_[bin.kernel + n];
+        }
+        power[k] = 2 * std::norm(sum);
+    }
+    return true;
 }
 
 double SpectrumEstimator::binWidth(std::size_t band) const noexcept {
@@ -98,6 +154,9 @@ void SpectrumEstimator::feed(std::size_t band, double value) noexcept {
     double &slot = b.history[b.written % b.history.size()];
     b.evicted = slot;
     slot = value;
+    if (!b.constantQHistory.empty()) {
+        b.constantQHistory[b.written % b.constantQHistory.size()] = value;
+    }
     ++b.written;
 }
 
